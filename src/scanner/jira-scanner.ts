@@ -41,7 +41,7 @@ export async function getProjectIssues(
       fields: [
         'summary', 'description', 'status', 'assignee', 'reporter',
         'created', 'updated', 'priority', 'issuetype', 'labels',
-        'components', 'resolution', 'project'
+        'components', 'resolution', 'project', 'parent'
       ]
     });
 

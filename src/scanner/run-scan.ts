@@ -10,10 +10,11 @@ import { getAllSpaces, getSpacePages, getPageContent, extractJiraKeys } from './
 import { analyzeJiraStaleness, analyzeConfluenceStaleness } from '../analyzers/staleness';
 import { analyzeCompleteness } from '../analyzers/completeness';
 import { analyzeCrossReferences } from '../analyzers/cross-reference';
+import { analyzeWorkflowAnomalies, analyzeOrphanIssues, analyzeOverloadedAssignees } from '../analyzers/advanced-checks';
 import { calculateProjectScore } from '../analyzers/score-calculator';
 // AI analysis temporarily disabled until deploy issue resolved
 // import { analyzeWithLLM, parseLLMResult } from '../ai/llm-client';
-import { upsertScanResult, saveProjectScore, clearProjectResults, startScan, completeScan } from '../db/queries';
+import { upsertScanResult, saveProjectScore, clearProjectResults, startScan, completeScan, getConfig } from '../db/queries';
 import { Finding, ProjectScore } from './types';
 import { generateId, stripHtml } from '../utils/helpers';
 
@@ -33,9 +34,23 @@ export async function runProjectScan(projectKey: string): Promise<ProjectScore> 
   totalItems += issues.length;
   console.log(`[Scan] ${projectKey}: ${issues.length} Jira issues`);
 
-  // Jira Analyzers
+  // Jira Analyzers — core checks
   allFindings.push(...analyzeJiraStaleness(issues, projectKey));
   allFindings.push(...analyzeCompleteness(issues, projectKey));
+
+  // Jira Analyzers — advanced checks
+  allFindings.push(...analyzeOrphanIssues(issues, projectKey));
+
+  const overloadThreshold = parseInt(await getConfig('overload_threshold', '15'), 10);
+  allFindings.push(...analyzeOverloadedAssignees(issues, projectKey, overloadThreshold));
+
+  try {
+    const workflowFindings = await analyzeWorkflowAnomalies(issues, projectKey);
+    allFindings.push(...workflowFindings);
+    console.log(`[Scan] ${projectKey}: ${workflowFindings.length} workflow anomalies found`);
+  } catch (err) {
+    console.log(`[Scan] Workflow anomaly check failed: ${err}`);
+  }
 
   // === 2. CONFLUENCE SCAN ===
   let allPages: any[] = [];
