@@ -179,7 +179,7 @@ export async function getConfig(key: string, defaultValue: string): Promise<stri
   const result = await sql.prepare(`
     SELECT config_value FROM app_config WHERE config_key = ?
   `).bindParams(key).execute();
-  return result.rows[0]?.config_value || defaultValue;
+  return (result.rows[0] as any)?.config_value || defaultValue;
 }
 
 export async function setConfig(key: string, value: string): Promise<void> {
