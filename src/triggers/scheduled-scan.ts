@@ -5,35 +5,26 @@
 // PURPOSE: Scheduled trigger that runs hourly scans
 // ============================================================
 
-import { Queue } from '@forge/events';
 import { getAllProjects } from '../scanner/jira-scanner';
+import { runProjectScan } from '../scanner/run-scan';
 import { initializeDatabase } from '../db/schema';
-import { generateId } from '../utils/helpers';
-
-const queue = new Queue({ key: 'quality-checks' });
 
 export async function handler(): Promise<void> {
   console.log('[ScheduledScan] Starting hourly scan...');
 
-  // Ensure DB schema exists
   await initializeDatabase();
 
-  // Get all Jira projects
   const projects = await getAllProjects();
   console.log(`[ScheduledScan] Found ${projects.length} projects`);
 
-  // Queue scan jobs for each project
-  const events = projects.slice(0, 20).map(project => ({
-    body: {
-      scanId: generateId('scan'),
-      projectKey: project.key,
-      projectName: project.name,
-      scanType: 'incremental'
+  for (const project of projects.slice(0, 10)) {
+    try {
+      const score = await runProjectScan(project.key);
+      console.log(`[ScheduledScan] ${project.key}: ${score.overallScore}/100`);
+    } catch (err) {
+      console.error(`[ScheduledScan] Error scanning ${project.key}:`, err);
     }
-  }));
-
-  if (events.length > 0) {
-    await queue.push(events);
-    console.log(`[ScheduledScan] Queued ${events.length} project scans`);
   }
+
+  console.log('[ScheduledScan] Hourly scan complete');
 }

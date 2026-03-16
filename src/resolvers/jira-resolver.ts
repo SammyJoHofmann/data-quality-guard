@@ -8,6 +8,7 @@
 import Resolver from '@forge/resolver';
 import { getLatestProjectScore, getProjectFindings, getProjectScoreHistory, getAllProjectScores } from '../db/queries';
 import { initializeDatabase } from '../db/schema';
+import { runProjectScan } from '../scanner/run-scan';
 
 const resolver = new Resolver();
 
@@ -30,19 +31,17 @@ resolver.define('getAllScores', async () => {
 });
 
 resolver.define('triggerScan', async ({ payload, context }: any) => {
-  const { Queue } = await import('@forge/events');
-  const { generateId } = await import('../utils/helpers');
-  const queue = new Queue({ key: 'quality-checks' });
+  await initializeDatabase();
   const projectKey = context?.extension?.project?.key || payload?.projectKey;
-
   if (!projectKey) return { error: 'No project context' };
 
-  const scanId = generateId('scan');
-  await queue.push({
-    body: { scanId, projectKey, scanType: 'manual' }
-  });
-
-  return { scanId, message: `Scan queued for ${projectKey}` };
+  try {
+    const result = await runProjectScan(projectKey);
+    return { message: `Scan complete for ${projectKey}`, score: result.overallScore, findings: result.findingsCount };
+  } catch (err: any) {
+    console.error('[triggerScan] Error:', err);
+    return { error: err.message || 'Scan failed' };
+  }
 });
 
 export const handler = resolver.getDefinitions();

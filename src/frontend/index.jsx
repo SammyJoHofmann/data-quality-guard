@@ -50,8 +50,9 @@ function ProjectDashboard() {
   async function triggerScan() {
     setScanning(true);
     try {
-      await invoke('triggerScan');
-      setTimeout(loadData, 5000);
+      const result = await invoke('triggerScan');
+      console.log('Scan result:', result);
+      await loadData();
     } catch (err) {
       console.error('Scan failed:', err);
     }

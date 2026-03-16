@@ -37,12 +37,9 @@ export async function upsertScanResult(result: {
 }
 
 export async function getProjectFindings(projectKey: string, limit = 50): Promise<any[]> {
-  const result = await sql.prepare(`
-    SELECT * FROM scan_results
-    WHERE project_key = ?
-    ORDER BY severity DESC, score ASC
-    LIMIT ?
-  `).bindParams(projectKey, limit).execute();
+  const result = await sql.prepare(
+    `SELECT * FROM scan_results WHERE project_key = ? ORDER BY severity DESC, score ASC LIMIT ${limit}`
+  ).bindParams(projectKey).execute();
   return result.rows;
 }
 
@@ -100,13 +97,9 @@ export async function getLatestProjectScore(projectKey: string): Promise<any | n
 }
 
 export async function getProjectScoreHistory(projectKey: string, limit = 30): Promise<any[]> {
-  const result = await sql.prepare(`
-    SELECT overall_score, staleness_score, completeness_score, consistency_score, cross_ref_score, findings_count, calculated_at
-    FROM project_scores
-    WHERE project_key = ?
-    ORDER BY calculated_at DESC
-    LIMIT ?
-  `).bindParams(projectKey, limit).execute();
+  const result = await sql.prepare(
+    `SELECT overall_score, staleness_score, completeness_score, consistency_score, cross_ref_score, findings_count, calculated_at FROM project_scores WHERE project_key = ? ORDER BY calculated_at DESC LIMIT ${limit}`
+  ).bindParams(projectKey).execute();
   return result.rows;
 }
 
