@@ -66,15 +66,36 @@ function getCheckLabel(checkType) {
 }
 
 function getRecommendation(finding) {
-  if (safe(finding.details)) return safe(finding.details);
   const t = safe(finding.check_type);
-  if (t.includes('stale')) return 'Ticket aktualisieren oder schließen';
-  if (t.includes('no_description') || t.includes('missing_description')) return 'Beschreibung hinzufügen';
-  if (t.includes('no_assignee') || t.includes('unassigned')) return 'Verantwortlichen zuweisen';
-  if (t.includes('no_priority')) return 'Priorität setzen';
-  if (t.includes('consistency') || t.includes('contradiction')) return 'Widerspruch prüfen und beheben';
-  if (t.includes('cross_ref') || t.includes('broken_link')) return 'Verlinkung prüfen und korrigieren';
-  return 'Problem prüfen und beheben';
+  const m = safe(finding.message);
+  const sev = safe(finding.severity);
+
+  // Spezifische Empfehlungen basierend auf check_type UND Kontext
+  if (t.includes('stale') || t.includes('staleness')) {
+    if (m.includes('Seite') || m.includes('page')) return 'Confluence-Seite prüfen und aktualisieren oder als veraltet markieren';
+    if (sev === 'critical') return 'Ticket sofort schließen oder aktualisieren — seit über 90 Tagen unberührt';
+    return 'Ticket aktualisieren oder schließen — bei Bedarf neu priorisieren';
+  }
+  if (t.includes('no_description') || t.includes('missing_description') || t.includes('completeness')) {
+    if (m.includes('Done') || m.includes('Fertig')) return 'Nachträglich Beschreibung ergänzen für Nachvollziehbarkeit';
+    return 'Beschreibung mit Akzeptanzkriterien und Kontext hinzufügen';
+  }
+  if (t.includes('no_assignee') || t.includes('unassigned')) {
+    if (sev === 'critical' || sev === 'high') return 'Dringend: Verantwortlichen zuweisen — High-Priority ohne Bearbeiter!';
+    return 'Verantwortlichen zuweisen damit Aufgabe bearbeitet werden kann';
+  }
+  if (t.includes('no_priority')) return 'Priorität setzen um Backlog-Planung zu ermöglichen';
+  if (t.includes('no_labels') || t.includes('missing_labels')) return 'Labels vergeben für bessere Kategorisierung und Filterung';
+  if (t.includes('lost_knowledge') || t.includes('orphan')) return 'Ticket einem aktiven Teammitglied zuweisen — ehemaliger Bearbeiter nicht mehr verfügbar';
+  if (t.includes('sprint_readiness') || t.includes('not_ready')) return 'Fehlende Pflichtfelder ergänzen bevor das Ticket in den Sprint kommt';
+  if (t.includes('stale_documentation') || t.includes('stale_doc')) return 'Confluence-Seite aktualisieren — referenzierte Tickets sind abgeschlossen';
+  if (t.includes('contradiction') || t.includes('consistency')) return 'Widerspruch zwischen Jira und Confluence beheben — Doku aktualisieren';
+  if (t.includes('cross_ref') || t.includes('broken_link')) return 'Verlinkung prüfen — Ziel existiert nicht mehr oder hat anderen Status';
+  if (t.includes('workflow') || t.includes('regression')) return 'Workflow prüfen — Ticket wurde zurückgestuft, mögliche Nacharbeit';
+  if (t.includes('overloaded') || t.includes('bottleneck')) return 'Aufgaben umverteilen — Bearbeiter hat zu viele offene Tickets';
+  if (t.includes('spillover')) return 'Sprint-Überlauf klären — Ticket war nicht im Sprint abgeschlossen';
+  if (t.includes('due_date') || t.includes('overdue')) return 'Fälligkeitsdatum prüfen und anpassen';
+  return 'Problem prüfen und entsprechend beheben';
 }
 
 function formatDate(dateStr) {

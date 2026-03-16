@@ -135,7 +135,11 @@ permissions:
     - read:confluence-content.all
     - read:confluence-space.summary
     - search:confluence
+    - read:page:confluence
+    - read:space:confluence
   external:
     fetch:
+      client:
+        - api.anthropic.com
       backend:
         - api.anthropic.com

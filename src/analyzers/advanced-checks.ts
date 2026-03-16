@@ -61,7 +61,7 @@ export async function analyzeWorkflowAnomalies(
               checkType: 'consistency',
               score: 30,
               severity: 'high',
-              message: `Workflow regression: moved from "${item.fromString}" back to "${item.toString}" — indicates rework or premature closure`,
+              message: `Workflow-Rückschritt: Status von "${item.fromString}" zurück zu "${item.toString}" — mögliche Nacharbeit oder verfrühter Abschluss`,
               details: JSON.stringify({
                 from: item.fromString,
                 to: item.toString,
@@ -124,7 +124,7 @@ export function analyzeOrphanIssues(
         checkType: 'completeness',
         score: 50,
         severity: 'medium',
-        message: `${issue.fields.issuetype?.name} without Epic link — harder to track and prioritize`,
+        message: `${issue.fields.issuetype?.name} ohne Epic-Verknüpfung — schwerer zu verfolgen und priorisieren`,
       });
     }
   }
@@ -177,7 +177,7 @@ export function analyzeOverloadedAssignees(
         checkType: 'consistency',
         score: Math.max(10, 100 - (data.count - threshold) * 5),
         severity: data.count > threshold * 2 ? 'critical' : 'high',
-        message: `${data.name} has ${data.count} open issues — potential bottleneck (threshold: ${threshold})`,
+        message: `${data.name} hat ${data.count} offene Tickets — möglicher Engpass (Schwelle: ${threshold})`,
         details: JSON.stringify({
           assignee: data.name,
           openIssueCount: data.count,
@@ -222,7 +222,7 @@ export function analyzeSprintSpillover(
           checkType: 'consistency',
           score: 40,
           severity: 'high',
-          message: `Sprint spillover: not Done but in closed sprint "${sprint.name || 'Unknown'}"`,
+          message: `Sprint-Überlauf: Nicht abgeschlossen aber im beendeten Sprint "${sprint.name || 'Unbekannt'}"`,
           details: JSON.stringify({
             sprintName: sprint.name,
             sprintState: sprint.state,

@@ -47,7 +47,7 @@ export function analyzeCrossReferences(
           checkType: 'cross_reference',
           score: 30,
           severity: 'high',
-          message: `Page "${page.title}" references ${key} which doesn't exist or was deleted`,
+          message: `Seite "${page.title}" verweist auf ${key} — Ticket existiert nicht oder wurde gelöscht`,
           details: JSON.stringify({ pageTitle: page.title, missingIssue: key })
         });
       } else {
@@ -64,7 +64,7 @@ export function analyzeCrossReferences(
             checkType: 'cross_reference',
             score: 50,
             severity: 'medium',
-            message: `Page "${page.title}" references ${key} which is ${resolution || 'Done'} — may need update`,
+            message: `Seite "${page.title}" verweist auf ${key} (Status: ${resolution || 'Fertig'}) — Seite möglicherweise veraltet`,
             details: JSON.stringify({
               pageTitle: page.title,
               issueKey: key,
