@@ -40,7 +40,7 @@ export function analyzeJiraStaleness(issues: JiraIssue[], projectKey: string): F
         checkType: 'staleness',
         score: Math.max(0, 100 - daysInactive),
         severity: 'critical',
-        message: `Issue not updated for ${daysInactive} days (Status: ${statusName})`,
+        message: `Seit ${daysInactive} Tagen nicht aktualisiert (Status: ${statusName}) — bitte prüfen ob noch relevant`,
         details: JSON.stringify({
           lastUpdated: issue.fields.updated,
           status: statusName,
@@ -56,7 +56,7 @@ export function analyzeJiraStaleness(issues: JiraIssue[], projectKey: string): F
         checkType: 'staleness',
         score: Math.max(20, 100 - daysInactive),
         severity: 'medium',
-        message: `Issue inactive for ${daysInactive} days (Status: ${statusName})`,
+        message: `Seit ${daysInactive} Tagen inaktiv (Status: ${statusName}) — bitte prüfen ob noch relevant`,
       });
     }
 
@@ -71,7 +71,7 @@ export function analyzeJiraStaleness(issues: JiraIssue[], projectKey: string): F
           checkType: 'staleness',
           score: 10,
           severity: 'critical',
-          message: `Issue stuck "In Progress" for ${daysInactive} days — likely abandoned or blocked`,
+          message: `Seit ${daysInactive} Tagen auf "In Progress" — vermutlich aufgegeben oder blockiert`,
         });
       } else if (daysInactive >= THRESHOLDS.ISSUE_IN_PROGRESS_WARNING) {
         findings.push({
@@ -82,7 +82,7 @@ export function analyzeJiraStaleness(issues: JiraIssue[], projectKey: string): F
           checkType: 'staleness',
           score: 40,
           severity: 'high',
-          message: `Issue "In Progress" for ${daysInactive} days without update`,
+          message: `Seit ${daysInactive} Tagen auf "In Progress" ohne Update — bitte Status prüfen`,
         });
       }
     }
@@ -109,7 +109,7 @@ export function analyzeConfluenceStaleness(pages: ConfluencePage[], projectKey: 
         checkType: 'staleness',
         score: Math.max(0, 100 - Math.floor(daysInactive / 2)),
         severity: 'high',
-        message: `"${page.title}" not updated for ${daysInactive} days`,
+        message: `"${page.title}" seit ${daysInactive} Tagen nicht aktualisiert — Inhalt möglicherweise veraltet`,
         details: JSON.stringify({
           title: page.title,
           lastUpdated,
@@ -125,7 +125,7 @@ export function analyzeConfluenceStaleness(pages: ConfluencePage[], projectKey: 
         checkType: 'staleness',
         score: Math.max(30, 100 - Math.floor(daysInactive / 2)),
         severity: 'medium',
-        message: `"${page.title}" not updated for ${daysInactive} days`,
+        message: `"${page.title}" seit ${daysInactive} Tagen nicht aktualisiert — bitte Aktualität prüfen`,
       });
     }
   }

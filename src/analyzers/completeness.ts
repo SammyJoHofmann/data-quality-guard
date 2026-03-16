@@ -27,7 +27,7 @@ export function analyzeCompleteness(issues: JiraIssue[], projectKey: string): Fi
         checkType: 'completeness',
         score: 30,
         severity: isResolved ? 'low' : 'high',
-        message: `No description or description too short`,
+        message: `Keine Beschreibung — Ticket ist ohne Kontext nicht bearbeitbar`,
       });
     }
 
@@ -41,7 +41,7 @@ export function analyzeCompleteness(issues: JiraIssue[], projectKey: string): Fi
         checkType: 'completeness',
         score: 50,
         severity: 'medium',
-        message: `No assignee — who is responsible?`,
+        message: `Kein Zuständiger — wer kümmert sich darum?`,
       });
     }
 
@@ -55,7 +55,7 @@ export function analyzeCompleteness(issues: JiraIssue[], projectKey: string): Fi
         checkType: 'completeness',
         score: 70,
         severity: 'low',
-        message: `No labels or components — hard to categorize and find`,
+        message: `Keine Labels — schwer zu finden und zu filtern`,
       });
     }
 
@@ -69,7 +69,7 @@ export function analyzeCompleteness(issues: JiraIssue[], projectKey: string): Fi
         checkType: 'completeness',
         score: 60,
         severity: 'low',
-        message: `No priority set`,
+        message: `Keine Priorität gesetzt — Dringlichkeit unklar`,
       });
     }
 
@@ -88,7 +88,7 @@ export function analyzeCompleteness(issues: JiraIssue[], projectKey: string): Fi
           checkType: 'completeness',
           score: 40,
           severity: 'medium',
-          message: `Story without apparent acceptance criteria`,
+          message: `Story ohne Akzeptanzkriterien — wie wird Fertig definiert?`,
         });
       }
     }

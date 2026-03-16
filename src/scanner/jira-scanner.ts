@@ -32,29 +32,45 @@ export async function getProjectIssues(
   }
   const jql = jqlParts.join(' AND ');
   const maxResults = MAX_RESULTS;
+  const fields = 'summary,description,status,assignee,reporter,created,updated,priority,issuetype,labels,components,resolution,project';
+
+  let nextPageToken: string | undefined;
+  let hasMore = true;
+  let pageCount = 0;
 
   try {
-    // GET request to /search/jql — the new Jira API (old /search was removed)
-    const fields = 'summary,description,status,assignee,reporter,created,updated,priority,issuetype,labels,components,resolution,project';
-    const response = await api.asApp().requestJira(
-      route`/rest/api/3/search/jql?jql=${jql}&maxResults=${maxResults}&fields=${fields}`,
-      { headers: { 'Accept': 'application/json' } }
-    );
+    while (hasMore) {
+      pageCount++;
+      const response = nextPageToken
+        ? await api.asApp().requestJira(
+            route`/rest/api/3/search/jql?jql=${jql}&maxResults=${maxResults}&fields=${fields}&nextPageToken=${nextPageToken}`,
+            { headers: { 'Accept': 'application/json' } }
+          )
+        : await api.asApp().requestJira(
+            route`/rest/api/3/search/jql?jql=${jql}&maxResults=${maxResults}&fields=${fields}`,
+            { headers: { 'Accept': 'application/json' } }
+          );
 
-    console.log(`[JiraScanner] Response: ${response.status}`);
+      console.log(`[JiraScanner] Page ${pageCount} response: ${response.status}`);
 
-    if (!response.ok) {
-      let errText = '';
-      try { errText = await response.text(); } catch {}
-      console.error(`[JiraScanner] Error ${response.status}: ${errText.substring(0, 300)}`);
-      return [];
+      if (!response.ok) {
+        let errText = '';
+        try { errText = await response.text(); } catch {}
+        console.error(`[JiraScanner] Error ${response.status}: ${errText.substring(0, 300)}`);
+        break;
+      }
+
+      const data = await response.json();
+      const issues = data.issues || [];
+      allIssues.push(...issues);
+
+      nextPageToken = data.nextPageToken;
+      hasMore = !data.isLast && !!nextPageToken && allIssues.length < 500;
+
+      console.log(`[JiraScanner] Page ${pageCount}: ${issues.length} issues (total: ${allIssues.length})`);
     }
 
-    const data = await response.json();
-    const issues = data.issues || [];
-    allIssues.push(...issues);
-
-    console.log(`[JiraScanner] Found ${issues.length} issues in ${projectKey}`);
+    console.log(`[JiraScanner] Found ${allIssues.length} issues in ${projectKey} (${pageCount} pages)`);
   } catch (err: any) {
     console.error(`[JiraScanner] Exception: ${err.message}`);
   }

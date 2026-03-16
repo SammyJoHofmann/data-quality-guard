@@ -79,6 +79,20 @@ export async function getPageContent(pageId: string): Promise<string> {
   return data.body?.storage?.value || '';
 }
 
+/**
+ * Find Confluence spaces whose key matches the given project key.
+ * Falls back to all spaces if no exact match found.
+ */
+export async function findSpacesByKey(projectKey: string): Promise<ConfluenceSpace[]> {
+  const allSpaces = await getAllSpaces();
+  // First try exact key match
+  const exactMatch = allSpaces.filter(s => s.key.toUpperCase() === projectKey.toUpperCase());
+  if (exactMatch.length > 0) return exactMatch;
+  // Fallback: spaces whose key contains the project key
+  const partialMatch = allSpaces.filter(s => s.key.toUpperCase().includes(projectKey.toUpperCase()));
+  return partialMatch;
+}
+
 export function extractJiraKeys(htmlContent: string): string[] {
   // Match Jira issue keys in the format PROJECT-123
   const regex = /\b([A-Z][A-Z0-9]+-\d+)\b/g;

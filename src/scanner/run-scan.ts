@@ -6,11 +6,14 @@
 // ============================================================
 
 import { getProjectIssues } from './jira-scanner';
-import { analyzeJiraStaleness } from '../analyzers/staleness';
+import { findSpacesByKey, getSpacePages, getPageContent } from './confluence-scanner';
+import { analyzeJiraStaleness, analyzeConfluenceStaleness } from '../analyzers/staleness';
 import { analyzeCompleteness } from '../analyzers/completeness';
+import { analyzeCrossReferences } from '../analyzers/cross-reference';
+import { analyzeWorkflowAnomalies, analyzeOrphanIssues, analyzeOverloadedAssignees } from '../analyzers/advanced-checks';
 import { calculateProjectScore } from '../analyzers/score-calculator';
 import { upsertScanResult, saveProjectScore, clearProjectResults } from '../db/queries';
-import { Finding, ProjectScore } from './types';
+import { Finding, ProjectScore, ConfluencePage } from './types';
 
 export async function runProjectScan(projectKey: string): Promise<ProjectScore> {
   console.log(`[Scan] Starting scan for ${projectKey}`);
@@ -23,6 +26,46 @@ export async function runProjectScan(projectKey: string): Promise<ProjectScore> 
   const allFindings: Finding[] = [];
   allFindings.push(...analyzeJiraStaleness(issues, projectKey));
   allFindings.push(...analyzeCompleteness(issues, projectKey));
+
+  // 2b. Advanced checks
+  try {
+    allFindings.push(...await analyzeWorkflowAnomalies(issues, projectKey));
+  } catch (err) { console.log('[Scan] Workflow check failed:', err); }
+
+  try {
+    allFindings.push(...analyzeOrphanIssues(issues, projectKey));
+  } catch (err) { console.log('[Scan] Orphan check failed:', err); }
+
+  try {
+    allFindings.push(...analyzeOverloadedAssignees(issues, projectKey));
+  } catch (err) { console.log('[Scan] Overload check failed:', err); }
+
+  // 2c. Confluence scan
+  const allPages: ConfluencePage[] = [];
+  const pageContents = new Map<string, string>();
+
+  try {
+    const spaces = await findSpacesByKey(projectKey);
+    console.log(`[Scan] ${projectKey}: ${spaces.length} Confluence spaces found`);
+
+    for (const space of spaces.slice(0, 3)) {
+      const pages = await getSpacePages(space.id);
+      allPages.push(...pages);
+
+      for (const page of pages.slice(0, 30)) {
+        try {
+          const content = await getPageContent(page.id);
+          if (content) pageContents.set(page.id, content);
+        } catch {}
+      }
+    }
+
+    allFindings.push(...analyzeConfluenceStaleness(allPages, projectKey));
+    allFindings.push(...analyzeCrossReferences(issues, allPages, pageContents, projectKey));
+    console.log(`[Scan] ${projectKey}: ${allPages.length} Confluence pages scanned`);
+  } catch (err) {
+    console.log('[Scan] Confluence scan failed:', err);
+  }
 
   console.log(`[Scan] ${projectKey}: ${allFindings.length} findings`);
 
