@@ -2,7 +2,7 @@
 // FILE: llm-client.ts
 // PATH: src/ai/llm-client.ts
 // PROJECT: DataQualityGuard
-// PURPOSE: LLM client with Forge LLMs API + external Claude fallback
+// PURPOSE: LLM client — external Claude API only (no @forge/llm)
 // ============================================================
 
 import api, { fetch } from '@forge/api';
@@ -13,6 +13,43 @@ interface LLMResponse {
   model: string;
   source: 'forge' | 'external';
 }
+
+export interface ContradictionResult {
+  hasContradiction: boolean;
+  confidence: number;
+  contradictions: {
+    type: string;
+    description: string;
+    recommendation: string;
+  }[];
+}
+
+// === LLM Availability Cache (60s) ===
+
+let llmAvailableCache: { value: boolean; ts: number } | null = null;
+const LLM_CACHE_TTL = 60_000; // 60 seconds
+
+export async function isLLMAvailable(): Promise<boolean> {
+  if (llmAvailableCache && Date.now() - llmAvailableCache.ts < LLM_CACHE_TTL) {
+    return llmAvailableCache.value;
+  }
+  try {
+    const aiEnabled = await getConfig('ai_enabled', 'false');
+    const apiKey = await getConfig('anthropic_api_key', '');
+    const available = aiEnabled === 'true' && apiKey.length > 0;
+    llmAvailableCache = { value: available, ts: Date.now() };
+    return available;
+  } catch {
+    llmAvailableCache = { value: false, ts: Date.now() };
+    return false;
+  }
+}
+
+export function invalidateLLMCache(): void {
+  llmAvailableCache = null;
+}
+
+// === Main LLM Entry Point ===
 
 /**
  * Tries Forge LLMs API first (data stays on Atlassian).
@@ -36,20 +73,13 @@ export async function analyzWithLLM(prompt: string): Promise<LLMResponse> {
   }
 }
 
-async function callForgeLLM(prompt: string): Promise<LLMResponse> {
-  // Forge LLMs API (EAP) — import dynamically to avoid errors if not available
-  const { chat } = await import('@forge/llm');
-  const response = await chat({
-    model: 'claude-sonnet-4-20250514',
-    messages: [{ role: 'user', content: prompt }],
-  });
+// === Forge LLM (EAP — not available) ===
 
-  return {
-    content: response.message?.content || '',
-    model: 'claude-sonnet-4',
-    source: 'forge'
-  };
+async function callForgeLLM(_prompt: string): Promise<LLMResponse> {
+  throw new Error('EAP not available');
 }
+
+// === External Claude API ===
 
 async function callExternalClaude(prompt: string): Promise<LLMResponse> {
   const apiKey = await getConfig('anthropic_api_key', '');
@@ -57,7 +87,7 @@ async function callExternalClaude(prompt: string): Promise<LLMResponse> {
     throw new Error('No Anthropic API key configured');
   }
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await api.fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -84,6 +114,36 @@ async function callExternalClaude(prompt: string): Promise<LLMResponse> {
     source: 'external'
   };
 }
+
+// === Contradiction Analysis ===
+
+export async function analyzeContradiction(
+  jiraText: string,
+  confluenceText: string,
+  jiraKey: string,
+  pageTitle: string
+): Promise<ContradictionResult> {
+  const prompt = buildContradictionPrompt(jiraText, confluenceText, jiraKey, pageTitle);
+  const response = await analyzWithLLM(prompt);
+
+  try {
+    const parsed = JSON.parse(response.content);
+    return {
+      hasContradiction: parsed.hasContradiction ?? false,
+      confidence: parsed.confidence ?? 0.5,
+      contradictions: parsed.contradictions ?? [],
+    };
+  } catch {
+    console.warn('[LLM] Could not parse contradiction response, falling back');
+    return {
+      hasContradiction: false,
+      confidence: 0,
+      contradictions: [],
+    };
+  }
+}
+
+// === Prompt Builder ===
 
 export function buildContradictionPrompt(
   jiraText: string,

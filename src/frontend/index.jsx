@@ -146,6 +146,15 @@ const sevSummaryStyle = xcss({
   borderRadius: 'border.radius',
 });
 
+const contradictionCardStyle = xcss({
+  backgroundColor: 'elevation.surface.raised',
+  padding: 'space.200',
+  borderRadius: 'border.radius',
+  borderColor: 'color.border.danger',
+  borderWidth: 'border.width',
+  borderStyle: 'solid',
+});
+
 // === CATEGORY CARD ===
 
 function CategoryCard({ name, score, description }) {
@@ -165,6 +174,54 @@ function CategoryCard({ name, score, description }) {
         <Text size="small" color="color.text.subtlest">{safe(description)}</Text>
       </Stack>
     </Box>
+  );
+}
+
+// === WIDERSPRÜCHE-SEKTION ===
+
+function ContradictionsSection({ contradictions, aiStatus }) {
+  const safeContradictions = (contradictions || []);
+  const safeAiStatus = aiStatus || { enabled: false, configured: false };
+
+  // Keine Widersprüche und KI aktiv → nichts anzeigen
+  if (safeContradictions.length === 0 && safeAiStatus.configured) {
+    return null;
+  }
+
+  // Keine Widersprüche, kein API-Key → Hinweis
+  if (safeContradictions.length === 0 && !safeAiStatus.configured) {
+    return (
+      <SectionMessage appearance="information">
+        <Text>{"Für tiefere Widerspruchsanalyse einen Claude API-Key in den Einstellungen hinterlegen."}</Text>
+      </SectionMessage>
+    );
+  }
+
+  // Widersprüche vorhanden → Rote Karten
+  return (
+    <Stack space="space.150">
+      <Heading size="medium">{"Widersprüche (" + safe(safeContradictions.length) + ")"}</Heading>
+      {safeContradictions.map((c, i) => (
+        <Box key={'contradiction-' + safe(i)} xcss={contradictionCardStyle}>
+          <Stack space="space.100">
+            <Inline space="space.100" alignBlock="center">
+              <Lozenge appearance="removed" isBold>{"Widerspruch"}</Lozenge>
+              <Text weight="bold">{safe(c.source_key) + " \u2194 " + safe(c.target_key)}</Text>
+              {safeNum(c.confidence) > 0 ? (
+                <Lozenge appearance="default">{safe(Math.round(safeNum(c.confidence) * 100)) + "% Konfidenz"}</Lozenge>
+              ) : null}
+            </Inline>
+            <Text>{safe(c.description)}</Text>
+            {safe(c.page_title) ? (
+              <Text size="small" color="color.text.subtlest">{"Seite: " + safe(c.page_title)}</Text>
+            ) : null}
+            {safe(c.recommendation) ? (
+              <Text size="small" color="color.text.accent.blue">{"Empfehlung: " + safe(c.recommendation)}</Text>
+            ) : null}
+          </Stack>
+        </Box>
+      ))}
+    </Stack>
   );
 }
 
@@ -444,7 +501,13 @@ function ProjectDashboard() {
         </Box>
       ) : null}
 
-      {/* 7. SCAN-INFO */}
+      {/* 7. WIDERSPRÜCHE */}
+      <ContradictionsSection
+        contradictions={data.contradictions || []}
+        aiStatus={data.aiStatus || { enabled: false, configured: false }}
+      />
+
+      {/* 8. SCAN-INFO */}
       <Box xcss={cardStyle}>
         <Inline space="space.200">
           <Text size="small" color="color.text.subtlest">
@@ -452,6 +515,17 @@ function ProjectDashboard() {
           </Text>
           <Text size="small" color="color.text.subtlest">
             {safe(items) + " Tickets gescannt"}
+          </Text>
+        </Inline>
+      </Box>
+
+      {/* 9. KI-STATUS-HINWEIS */}
+      <Box xcss={cardStyle}>
+        <Inline space="space.200" alignBlock="center">
+          <Text size="small" color="color.text.subtlest">
+            {data.aiStatus?.configured
+              ? "KI-Analyse aktiv — Widersprüche werden automatisch erkannt"
+              : "Tipp: Claude API-Key in den Einstellungen hinterlegen für KI-Widerspruchserkennung"}
           </Text>
         </Inline>
       </Box>

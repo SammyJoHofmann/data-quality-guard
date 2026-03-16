@@ -15,7 +15,19 @@ import { calculateProjectScore } from '../analyzers/score-calculator';
 import { upsertScanResult, saveProjectScore, clearProjectResults } from '../db/queries';
 import { Finding, ProjectScore, ConfluencePage } from './types';
 
+async function isAIEnabled(): Promise<boolean> {
+  try {
+    const { getConfig } = await import('../db/queries');
+    const aiEnabled = await getConfig('ai_enabled', 'false');
+    if (aiEnabled !== 'true') return false;
+    const apiKey = await getConfig('anthropic_api_key', '');
+    return !!apiKey && apiKey.length >= 10;
+  } catch { return false; }
+}
+
 export async function runProjectScan(projectKey: string): Promise<ProjectScore> {
+  const aiEnabled = await isAIEnabled();
+  console.log(`[Scan] AI mode: ${aiEnabled ? 'ENABLED' : 'DISABLED'}`);
   console.log(`[Scan] Starting scan for ${projectKey}`);
 
   // 1. Get Jira issues
@@ -66,6 +78,20 @@ export async function runProjectScan(projectKey: string): Promise<ProjectScore> 
   } catch (err) {
     console.log('[Scan] Confluence scan failed:', err);
   }
+
+  // 2d. Intelligence-Analysen (regelbasiert + optional KI)
+  try {
+    const { runIntelligenceChecks, runAIContradictionAnalysis } = await import('../analyzers/intelligence');
+    const intelligenceFindings = await runIntelligenceChecks(issues, allPages, pageContents, projectKey, aiEnabled);
+    allFindings.push(...intelligenceFindings);
+
+    if (aiEnabled) {
+      try {
+        const aiFindings = await runAIContradictionAnalysis(issues, allPages, pageContents, projectKey);
+        allFindings.push(...aiFindings);
+      } catch (err) { console.log('[Scan] AI analysis failed:', err); }
+    }
+  } catch (err) { console.log('[Scan] Intelligence checks failed:', err); }
 
   console.log(`[Scan] ${projectKey}: ${allFindings.length} findings`);
 

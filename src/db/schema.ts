@@ -88,7 +88,27 @@ const migrations = migrationRunner
   .enqueue('v002_create_project_scores', CREATE_PROJECT_SCORES)
   .enqueue('v003_create_contradictions', CREATE_CONTRADICTIONS)
   .enqueue('v004_create_scan_history', CREATE_SCAN_HISTORY)
-  .enqueue('v005_create_app_config', CREATE_APP_CONFIG);
+  .enqueue('v005_create_app_config', CREATE_APP_CONFIG)
+  .enqueue('v006_add_dismissed_column', `ALTER TABLE scan_results ADD COLUMN dismissed BOOLEAN DEFAULT FALSE`)
+  .enqueue('v007_add_ai_enhanced_column', `ALTER TABLE scan_results ADD COLUMN ai_enhanced BOOLEAN DEFAULT FALSE`)
+  .enqueue('v008_add_contradiction_page_title', `ALTER TABLE contradictions ADD COLUMN page_title VARCHAR(500) NULL`)
+  .enqueue('v009_create_ai_analysis', `
+    CREATE TABLE IF NOT EXISTS ai_analysis (
+      id VARCHAR(64) PRIMARY KEY,
+      project_key VARCHAR(50) NOT NULL,
+      item_key VARCHAR(100) NOT NULL,
+      analysis_type VARCHAR(50) NOT NULL,
+      input_summary TEXT,
+      result TEXT NOT NULL,
+      confidence DECIMAL(3,2) DEFAULT 0.50,
+      model VARCHAR(50),
+      source VARCHAR(20),
+      tokens_used INT DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_project_ai (project_key),
+      INDEX idx_item_ai (item_key)
+    )
+  `);
 
 let initialized = false;
 

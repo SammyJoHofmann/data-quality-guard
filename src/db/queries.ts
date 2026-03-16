@@ -38,7 +38,7 @@ export async function upsertScanResult(result: {
 
 export async function getProjectFindings(projectKey: string, limit = 50): Promise<any[]> {
   const result = await sql.prepare(
-    `SELECT * FROM scan_results WHERE project_key = ? ORDER BY severity DESC, score ASC LIMIT ${limit}`
+    `SELECT * FROM scan_results WHERE project_key = ? AND (dismissed = FALSE OR dismissed IS NULL) ORDER BY severity DESC, score ASC LIMIT ${limit}`
   ).bindParams(projectKey).execute();
   return result.rows;
 }
@@ -143,10 +143,11 @@ export async function saveContradiction(c: {
 export async function getProjectContradictions(projectKey: string): Promise<any[]> {
   const result = await sql.prepare(`
     SELECT * FROM contradictions
-    WHERE source_key LIKE CONCAT(?, '%') AND resolved = FALSE
+    WHERE (source_key LIKE CONCAT(?, '-%') OR target_key LIKE CONCAT(?, '-%'))
+      AND resolved = FALSE
     ORDER BY confidence DESC
     LIMIT 50
-  `).bindParams(projectKey).execute();
+  `).bindParams(projectKey, projectKey).execute();
   return result.rows;
 }
 
@@ -180,4 +181,44 @@ export async function setConfig(key: string, value: string): Promise<void> {
     REPLACE INTO app_config (config_key, config_value, updated_at)
     VALUES (?, ?, NOW())
   `).bindParams(key, value).execute();
+}
+
+// === DISMISS FINDINGS ===
+
+export async function dismissFinding(findingId: string): Promise<void> {
+  await sql.prepare(`
+    UPDATE scan_results SET dismissed = TRUE WHERE id = ?
+  `).bindParams(findingId).execute();
+}
+
+// === AI ANALYSIS ===
+
+export async function saveAIAnalysis(analysis: {
+  id: string;
+  projectKey: string;
+  itemKey: string;
+  analysisType: string;
+  inputSummary?: string;
+  result: string;
+  confidence: number;
+  model: string;
+  source: string;
+  tokensUsed: number;
+}): Promise<void> {
+  await sql.prepare(`
+    REPLACE INTO ai_analysis
+    (id, project_key, item_key, analysis_type, input_summary, result, confidence, model, source, tokens_used, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+  `).bindParams(
+    analysis.id,
+    analysis.projectKey,
+    analysis.itemKey,
+    analysis.analysisType,
+    analysis.inputSummary || null,
+    analysis.result,
+    analysis.confidence,
+    analysis.model,
+    analysis.source,
+    analysis.tokensUsed
+  ).execute();
 }

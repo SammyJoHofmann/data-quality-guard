@@ -6,7 +6,7 @@
 // ============================================================
 
 import Resolver from '@forge/resolver';
-import { getLatestProjectScore, getProjectFindings, getProjectScoreHistory, getAllProjectScores } from '../db/queries';
+import { getLatestProjectScore, getProjectFindings, getProjectScoreHistory, getAllProjectScores, getProjectContradictions, getConfig, setConfig } from '../db/queries';
 import { initializeDatabase } from '../db/schema';
 import { runProjectScan } from '../scanner/run-scan';
 
@@ -71,10 +71,27 @@ resolver.define('getProjectScore', async ({ payload, context }: any) => {
   const rawFindings = await getProjectFindings(projectKey, 20);
   const rawHistory = await getProjectScoreHistory(projectKey, 14);
 
+  let contradictions: any[] = [];
+  try { contradictions = await getProjectContradictions(projectKey); } catch {}
+
+  const aiEnabled = await getConfig('ai_enabled', 'false');
+  const hasApiKey = (await getConfig('anthropic_api_key', '')).length > 0;
+
   return {
     score: sanitizeScore(rawScore),
     findings: sanitizeFindings(rawFindings),
     history: (rawHistory || []).map(sanitizeHistoryEntry),
+    contradictions: (contradictions || []).map((c: any) => ({
+      id: String(c?.id || ''),
+      source_key: String(c?.source_key || ''),
+      target_key: String(c?.target_key || ''),
+      contradiction_type: String(c?.contradiction_type || ''),
+      confidence: Number(c?.confidence) || 0,
+      description: String(c?.description || ''),
+      recommendation: String(c?.recommendation || ''),
+      page_title: String(c?.page_title || ''),
+    })),
+    aiStatus: { enabled: aiEnabled === 'true', configured: hasApiKey },
   };
 });
 
@@ -96,6 +113,39 @@ resolver.define('triggerScan', async ({ payload, context }: any) => {
     console.error('[triggerScan] Error:', err);
     return { error: err.message || 'Scan failed' };
   }
+});
+
+resolver.define('getSettings', async () => {
+  await initializeDatabase();
+  const aiEnabled = await getConfig('ai_enabled', 'false');
+  const hasApiKey = (await getConfig('anthropic_api_key', '')).length > 0;
+  const model = await getConfig('ai_model', 'claude-sonnet-4-20250514');
+  return {
+    aiEnabled: aiEnabled === 'true',
+    hasApiKey,
+    model: String(model),
+  };
+});
+
+resolver.define('saveSettings', async ({ payload }: any) => {
+  await initializeDatabase();
+  if (payload?.aiEnabled !== undefined) {
+    await setConfig('ai_enabled', payload.aiEnabled ? 'true' : 'false');
+  }
+  if (payload?.apiKey !== undefined && payload.apiKey.length > 0) {
+    await setConfig('anthropic_api_key', String(payload.apiKey));
+  }
+  if (payload?.model !== undefined) {
+    await setConfig('ai_model', String(payload.model));
+  }
+  return { success: true };
+});
+
+resolver.define('deleteApiKey', async () => {
+  await initializeDatabase();
+  await setConfig('anthropic_api_key', '');
+  await setConfig('ai_enabled', 'false');
+  return { success: true };
 });
 
 export const handler = resolver.getDefinitions();
