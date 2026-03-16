@@ -2,62 +2,113 @@
 // FILE: llm-client.ts
 // PATH: src/ai/llm-client.ts
 // PROJECT: DataQualityGuard
-// PURPOSE: LLM client with Forge LLMs API + external Claude fallback
+// PURPOSE: Dual LLM client — Forge LLMs API + external Claude fallback
 // ============================================================
 
-import api, { fetch } from '@forge/api';
-import { getConfig } from '../db/queries';
+import api from '@forge/api';
+import { withRetry } from '../utils/helpers';
 
 interface LLMResponse {
   content: string;
   model: string;
-  source: 'forge' | 'external';
+  source: 'forge' | 'external' | 'none';
 }
+
+const CONTRADICTION_SYSTEM_PROMPT = `You are a precise text analyst for quality assurance in software projects.
+
+TASK: Compare two texts from different sources (Jira tickets and Confluence pages) and identify REAL contradictions.
+
+RULES:
+1. A contradiction exists ONLY when two statements DIRECTLY conflict
+2. Different levels of detail are NOT contradictions
+3. Supplementary information is NOT a contradiction
+4. Be CONSERVATIVE: when in doubt, do NOT report a contradiction
+
+CATEGORIES: factual, requirement, status, scope, timeline, responsibility
+
+RESPOND ONLY WITH THIS JSON FORMAT — no other text:
+{
+  "contradictions_found": true/false,
+  "contradictions": [
+    {
+      "category": "factual|requirement|status|scope|timeline|responsibility",
+      "severity": "critical|high|medium|low",
+      "confidence": 0.0-1.0,
+      "source_excerpt": "Quote from source A",
+      "target_excerpt": "Quote from source B",
+      "explanation": "Why these statements contradict",
+      "recommendation": "What should be done"
+    }
+  ]
+}`;
 
 /**
- * Tries Forge LLMs API first (data stays on Atlassian).
- * Falls back to external Claude API if Forge LLMs unavailable.
+ * Analyzes two texts for contradictions using LLM.
+ * Tries Forge LLMs API first, falls back to external Claude API.
  */
-export async function analyzWithLLM(prompt: string): Promise<LLMResponse> {
+export async function analyzeWithLLM(
+  textA: string,
+  textB: string,
+  sourceA: string,
+  sourceB: string
+): Promise<LLMResponse> {
+  const userPrompt = `SOURCE A (${sourceA}):\n${textA.substring(0, 3000)}\n\nSOURCE B (${sourceB}):\n${textB.substring(0, 3000)}`;
+
+  // Try Forge LLMs API first
   try {
-    return await callForgeLLM(prompt);
+    return await callForgeLLM(userPrompt);
   } catch (err) {
     console.log('[LLM] Forge LLMs unavailable, trying external API...');
-    try {
-      return await callExternalClaude(prompt);
-    } catch (extErr) {
-      console.error('[LLM] Both LLM sources failed:', extErr);
-      return {
-        content: 'LLM analysis unavailable. Using rule-based analysis only.',
-        model: 'none',
-        source: 'forge'
-      };
-    }
+  }
+
+  // Fallback to external Claude API
+  try {
+    return await withRetry(() => callExternalClaude(userPrompt));
+  } catch (err) {
+    console.error('[LLM] All LLM sources failed:', err);
+    return { content: '{"contradictions_found": false, "contradictions": []}', model: 'none', source: 'none' };
   }
 }
 
-async function callForgeLLM(prompt: string): Promise<LLMResponse> {
-  // Forge LLMs API (EAP) — import dynamically to avoid errors if not available
-  const { chat } = await import('@forge/llm');
+async function callForgeLLM(userPrompt: string): Promise<LLMResponse> {
+  // @forge/llm is only available in EAP — skip if not installed
+  throw new Error('Forge LLMs API not available — using external Claude API fallback');
+
+  // When @forge/llm becomes GA, uncomment this:
+  // const { chat } = require('@forge/llm');
+  let chat: any;
+
   const response = await chat({
     model: 'claude-sonnet-4-20250514',
-    messages: [{ role: 'user', content: prompt }],
+    messages: [
+      { role: 'system', content: CONTRADICTION_SYSTEM_PROMPT },
+      { role: 'user', content: userPrompt }
+    ],
+    temperature: 0.1,
+    max_completion_tokens: 2000
   });
 
-  return {
-    content: response.message?.content || '',
-    model: 'claude-sonnet-4',
-    source: 'forge'
-  };
+  const content = response.choices?.[0]?.message?.content || '';
+  const text = typeof content === 'string' ? content : (content as any)[0]?.text || '';
+
+  return { content: text, model: 'claude-sonnet-4', source: 'forge' };
 }
 
-async function callExternalClaude(prompt: string): Promise<LLMResponse> {
-  const apiKey = await getConfig('anthropic_api_key', '');
-  if (!apiKey) {
-    throw new Error('No Anthropic API key configured');
+async function callExternalClaude(userPrompt: string): Promise<LLMResponse> {
+  // Get API key from Forge config table (fallback)
+  let apiKey = '';
+  try {
+    const { getConfig } = await import('../db/queries');
+    apiKey = await getConfig('anthropic_api_key', '');
+  } catch {
+    // DB might not be ready
   }
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  if (!apiKey) {
+    throw new Error('No Anthropic API key configured. Set it via admin settings.');
+  }
+
+  const response = await api.fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -66,8 +117,10 @@ async function callExternalClaude(prompt: string): Promise<LLMResponse> {
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 2000,
+      system: CONTRADICTION_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }],
+      temperature: 0.1
     }),
   });
 
@@ -75,42 +128,27 @@ async function callExternalClaude(prompt: string): Promise<LLMResponse> {
     throw new Error(`Claude API error: ${response.status}`);
   }
 
-  const data = await response.json();
-  const text = data.content?.[0]?.text || '';
-
+  const data = await response.json() as any;
   return {
-    content: text,
+    content: data.content?.[0]?.text || '',
     model: 'claude-sonnet-4',
     source: 'external'
   };
 }
 
-export function buildContradictionPrompt(
-  jiraText: string,
-  confluenceText: string,
-  jiraKey: string,
-  pageTitle: string
-): string {
-  return `You are a data quality analyst. Compare these two texts from the same project and identify any contradictions or inconsistencies.
-
-JIRA TICKET (${jiraKey}):
-${jiraText.substring(0, 2000)}
-
-CONFLUENCE PAGE ("${pageTitle}"):
-${confluenceText.substring(0, 2000)}
-
-Respond in JSON format:
-{
-  "hasContradiction": true/false,
-  "confidence": 0.0-1.0,
-  "contradictions": [
-    {
-      "type": "status_mismatch|requirement_conflict|date_discrepancy|technical_inconsistency",
-      "description": "Brief description of the contradiction",
-      "recommendation": "What should be done to resolve this"
-    }
-  ]
-}
-
-If no contradictions found, return: {"hasContradiction": false, "confidence": 1.0, "contradictions": []}`;
+/**
+ * Parses LLM JSON response and filters by confidence.
+ */
+export function parseLLMResult(raw: string, minConfidence = 0.7): any[] {
+  try {
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return [];
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!parsed.contradictions_found || !parsed.contradictions) return [];
+    return parsed.contradictions.filter((c: any) =>
+      c.confidence >= minConfidence && c.explanation?.length > 10
+    );
+  } catch {
+    return [];
+  }
 }

@@ -135,6 +135,7 @@ permissions:
     - read:confluence-content.all
     - read:confluence-space.summary
     - search:confluence
+    - storage:app
   external:
     fetch:
       backend:
