@@ -15,10 +15,11 @@ import { invoke, view } from '@forge/bridge';
 // === HELPERS ===
 
 function getScoreInfo(score) {
-  if (score >= 90) return { label: 'Excellent', appearance: 'success' };
-  if (score >= 80) return { label: 'Good', appearance: 'success' };
-  if (score >= 60) return { label: 'Fair', appearance: 'inprogress' };
-  if (score >= 40) return { label: 'Poor', appearance: 'moved' };
+  const s = Number(score) || 0;
+  if (s >= 90) return { label: 'Excellent', appearance: 'success' };
+  if (s >= 80) return { label: 'Good', appearance: 'success' };
+  if (s >= 60) return { label: 'Fair', appearance: 'inprogress' };
+  if (s >= 40) return { label: 'Poor', appearance: 'moved' };
   return { label: 'Critical', appearance: 'removed' };
 }
 
@@ -76,8 +77,9 @@ function ProjectDashboard() {
   }
 
   const { score, findings, history } = data;
-  const prev = history?.[1]?.overall_score;
-  const trend = prev != null ? (score.overall_score > prev ? ' ↑' : score.overall_score < prev ? ' ↓' : ' →') : '';
+  const prev = history?.[1]?.overall_score != null ? Number(history[1].overall_score) : null;
+  const current = Number(score.overall_score) || 0;
+  const trend = prev != null ? (current > prev ? ' ↑' : current < prev ? ' ↓' : ' →') : '';
 
   return (
     <Stack space="space.300">
@@ -90,33 +92,33 @@ function ProjectDashboard() {
         <Inline space="space.400" alignBlock="center">
           <Stack space="space.050" alignInline="center">
             <Text size="small" weight="bold">Overall{trend}</Text>
-            <Heading size="xlarge">{score.overall_score}</Heading>
-            <Lozenge appearance={getScoreInfo(score.overall_score).appearance}>
-              {getScoreInfo(score.overall_score).label}
+            <Heading size="xlarge">{String(Math.round(Number(score.overall_score)))}</Heading>
+            <Lozenge appearance={getScoreInfo(Number(score.overall_score)).appearance}>
+              {getScoreInfo(Number(score.overall_score)).label}
             </Lozenge>
           </Stack>
           <Stack space="space.050" alignInline="center">
             <Text size="small">Freshness</Text>
-            <Text weight="bold">{score.staleness_score}</Text>
+            <Text weight="bold">{String(Math.round(Number(score.staleness_score)))}</Text>
           </Stack>
           <Stack space="space.050" alignInline="center">
             <Text size="small">Completeness</Text>
-            <Text weight="bold">{score.completeness_score}</Text>
+            <Text weight="bold">{String(Math.round(Number(score.completeness_score)))}</Text>
           </Stack>
           <Stack space="space.050" alignInline="center">
             <Text size="small">Consistency</Text>
-            <Text weight="bold">{score.consistency_score}</Text>
+            <Text weight="bold">{String(Math.round(Number(score.consistency_score)))}</Text>
           </Stack>
           <Stack space="space.050" alignInline="center">
             <Text size="small">Cross-Refs</Text>
-            <Text weight="bold">{score.cross_ref_score}</Text>
+            <Text weight="bold">{String(Math.round(Number(score.cross_ref_score)))}</Text>
           </Stack>
         </Inline>
       </Box>
 
       <Inline space="space.300">
-        <Text><Badge appearance="primary">{score.total_issues}</Badge> Items scanned</Text>
-        <Text><Badge appearance={score.findings_count > 0 ? 'important' : 'default'}>{score.findings_count}</Badge> Findings</Text>
+        <Text><Badge appearance="primary">{String(score.total_issues)}</Badge> Items scanned</Text>
+        <Text><Badge appearance={Number(score.findings_count) > 0 ? 'important' : 'default'}>{String(score.findings_count)}</Badge> Findings</Text>
       </Inline>
 
       {findings?.length > 0 && (
@@ -129,10 +131,10 @@ function ProjectDashboard() {
               <Cell><Text weight="bold">Issue</Text></Cell>
             </Head>
             {findings.slice(0, 15).map((f, i) => (
-              <Row key={i}>
-                <Cell><Lozenge appearance={getSeverityAppearance(f.severity)}>{f.severity}</Lozenge></Cell>
-                <Cell><Text>{f.item_key}</Text></Cell>
-                <Cell><Text>{f.message}</Text></Cell>
+              <Row key={String(i)}>
+                <Cell><Lozenge appearance={getSeverityAppearance(f.severity || 'info')}>{String(f.severity || 'info')}</Lozenge></Cell>
+                <Cell><Text>{String(f.item_key || '')}</Text></Cell>
+                <Cell><Text>{String(f.message || '')}</Text></Cell>
               </Row>
             ))}
           </Table>

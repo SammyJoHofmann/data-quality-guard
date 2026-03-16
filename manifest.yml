@@ -1,5 +1,5 @@
 app:
-  id: ari:cloud:ecosystem::app/b7ec90b4-be8b-4839-b412-871a57683cb0
+  id: ari:cloud:ecosystem::app/de167c15-76e5-4b11-b62b-39f960d68a3f
   runtime:
     name: nodejs22.x
 

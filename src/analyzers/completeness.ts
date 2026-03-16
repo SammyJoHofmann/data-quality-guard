@@ -16,8 +16,9 @@ export function analyzeCompleteness(issues: JiraIssue[], projectKey: string): Fi
     const isResolved = f.status?.statusCategory?.key === 'done';
     const issueType = f.issuetype?.name?.toLowerCase() || '';
 
-    // No description
-    if (!f.description || f.description.trim().length < 10) {
+    // No description (Jira v3 returns ADF object, not string)
+    const descText = typeof f.description === 'string' ? f.description : JSON.stringify(f.description || '');
+    if (!f.description || descText.length < 20) {
       findings.push({
         id: generateId('noDesc'),
         itemType: 'jira_issue',
@@ -74,7 +75,7 @@ export function analyzeCompleteness(issues: JiraIssue[], projectKey: string): Fi
 
     // Story without acceptance criteria (heuristic: check description for "acceptance" or "criteria" or list markers)
     if ((issueType === 'story' || issueType === 'user story') && f.description) {
-      const desc = f.description.toLowerCase();
+      const desc = descText.toLowerCase();
       const hasAcceptanceCriteria = desc.includes('acceptance') || desc.includes('criteria') ||
         desc.includes('given') || desc.includes('when') || desc.includes('then') ||
         desc.includes('akzeptanzkriterien');
