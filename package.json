@@ -1,0 +1,23 @@
+{
+  "name": "data-quality-guard",
+  "version": "1.0.0",
+  "description": "Atlassian Forge App - Scans Jira & Confluence for data quality issues",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src/",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@forge/api": "^5.0.0",
+    "@forge/sql": "^2.0.0",
+    "@forge/events": "^1.0.0",
+    "@forge/react": "^11.0.0",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "typescript": "^5.4.0"
+  },
+  "license": "MIT"
+}

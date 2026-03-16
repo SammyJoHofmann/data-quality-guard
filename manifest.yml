@@ -1,0 +1,147 @@
+app:
+  id: ari:cloud:ecosystem::app/placeholder-will-be-replaced
+  runtime:
+    name: nodejs22.x
+
+modules:
+  # === JIRA: Projekt-Dashboard ===
+  jira:projectPage:
+    - key: dq-project-dashboard
+      resource: project-dashboard
+      resolver:
+        function: jira-resolver
+        render: native
+      title: Data Quality Score
+
+  # === JIRA: Issue Panel ===
+  jira:issuePanel:
+    - key: dq-issue-panel
+      resource: issue-panel
+      resolver:
+        function: issue-resolver
+        render: native
+      title: Quality Check
+
+  # === CONFLUENCE: Global Page ===
+  confluence:globalPage:
+    - key: dq-confluence-dashboard
+      resource: confluence-dashboard
+      resolver:
+        function: confluence-resolver
+        render: native
+      title: Content Quality Dashboard
+
+  # === ROVO AGENT ===
+  rovo:agent:
+    - key: dq-agent
+      name: Data Quality Guard
+      description: >
+        AI agent that analyzes your Jira and Confluence data quality.
+        Ask about stale tickets, contradictions, or quality scores.
+      prompt: >
+        You are the Data Quality Guard agent. You help teams maintain
+        high-quality project data in Jira and Confluence. You can:
+        1. Scan projects for stale issues and outdated pages
+        2. Find contradictions between Jira tickets and Confluence docs
+        3. Report quality scores and trends
+        4. Suggest improvements
+        Always be specific about which items need attention and why.
+      conversationStarters:
+        - Scan my current project for data quality issues
+        - What are the biggest quality problems?
+        - Show me stale tickets that need attention
+        - Find contradictions between docs and tickets
+      actions:
+        - scan-project-action
+        - get-report-action
+
+  action:
+    - key: scan-project-action
+      function: scan-project
+      actionVerb: TRIGGER
+      description: Scans a Jira project for data quality issues
+      inputs:
+        projectKey:
+          title: Project Key
+          type: string
+          required: true
+          description: "The Jira project key to scan (e.g., PROJ)"
+
+    - key: get-report-action
+      function: get-report
+      actionVerb: GET
+      description: Gets the data quality report for a project
+      inputs:
+        projectKey:
+          title: Project Key
+          type: string
+          required: true
+
+  # === DATABASE ===
+  sql:
+    - key: main
+      engine: mysql
+
+  # === SCHEDULED TRIGGERS ===
+  scheduledTrigger:
+    - key: hourly-scan
+      function: scheduled-scan
+      interval: hour
+
+    - key: daily-report
+      function: scheduled-report
+      interval: day
+
+  # === ASYNC EVENT QUEUES ===
+  consumer:
+    - key: quality-check-consumer
+      queue: quality-checks
+      function: process-quality-check
+      resolver:
+        function: queue-resolver
+
+  # === FUNCTIONS ===
+  function:
+    - key: jira-resolver
+      handler: src/resolvers/jira-resolver.handler
+    - key: issue-resolver
+      handler: src/resolvers/issue-resolver.handler
+    - key: confluence-resolver
+      handler: src/resolvers/confluence-resolver.handler
+    - key: queue-resolver
+      handler: src/resolvers/queue-resolver.handler
+    - key: scheduled-scan
+      handler: src/triggers/scheduled-scan.handler
+      timeoutSeconds: 900
+    - key: scheduled-report
+      handler: src/triggers/scheduled-report.handler
+      timeoutSeconds: 300
+    - key: process-quality-check
+      handler: src/consumers/quality-check.handler
+      timeoutSeconds: 600
+    - key: scan-project
+      handler: src/actions/scan-project.handler
+    - key: get-report
+      handler: src/actions/get-report.handler
+
+# === UI RESOURCES ===
+resources:
+  - key: project-dashboard
+    path: src/frontend/project-dashboard.jsx
+  - key: issue-panel
+    path: src/frontend/issue-panel.jsx
+  - key: confluence-dashboard
+    path: src/frontend/confluence-dashboard.jsx
+
+# === PERMISSIONS ===
+permissions:
+  scopes:
+    - read:jira-work
+    - read:jira-user
+    - read:confluence-content.all
+    - read:confluence-space.summary
+    - search:confluence
+  external:
+    fetch:
+      backend:
+        - api.anthropic.com

@@ -1,0 +1,134 @@
+// ============================================================
+// FILE: staleness.ts
+// PATH: src/analyzers/staleness.ts
+// PROJECT: DataQualityGuard
+// PURPOSE: Detects stale/outdated Jira issues and Confluence pages
+// ============================================================
+
+import { JiraIssue, ConfluencePage, Finding } from '../scanner/types';
+import { generateId, daysSince, severityFromScore } from '../utils/helpers';
+
+// Configurable thresholds (days)
+const THRESHOLDS = {
+  ISSUE_STALE_WARNING: 30,
+  ISSUE_STALE_CRITICAL: 90,
+  ISSUE_IN_PROGRESS_WARNING: 14,
+  ISSUE_IN_PROGRESS_CRITICAL: 60,
+  PAGE_STALE_WARNING: 90,
+  PAGE_STALE_CRITICAL: 180,
+};
+
+export function analyzeJiraStaleness(issues: JiraIssue[], projectKey: string): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const issue of issues) {
+    const daysInactive = daysSince(issue.fields.updated);
+    const statusCategory = issue.fields.status?.statusCategory?.key;
+    const statusName = issue.fields.status?.name || 'Unknown';
+    const isResolved = statusCategory === 'done';
+
+    // Skip resolved issues
+    if (isResolved) continue;
+
+    // Check: Issue not updated for a long time
+    if (daysInactive >= THRESHOLDS.ISSUE_STALE_CRITICAL) {
+      findings.push({
+        id: generateId('stale'),
+        itemType: 'jira_issue',
+        itemKey: issue.key,
+        projectKey,
+        checkType: 'staleness',
+        score: Math.max(0, 100 - daysInactive),
+        severity: 'critical',
+        message: `Issue not updated for ${daysInactive} days (Status: ${statusName})`,
+        details: JSON.stringify({
+          lastUpdated: issue.fields.updated,
+          status: statusName,
+          assignee: issue.fields.assignee?.displayName || 'Unassigned'
+        })
+      });
+    } else if (daysInactive >= THRESHOLDS.ISSUE_STALE_WARNING) {
+      findings.push({
+        id: generateId('stale'),
+        itemType: 'jira_issue',
+        itemKey: issue.key,
+        projectKey,
+        checkType: 'staleness',
+        score: Math.max(20, 100 - daysInactive),
+        severity: 'medium',
+        message: `Issue inactive for ${daysInactive} days (Status: ${statusName})`,
+      });
+    }
+
+    // Check: "In Progress" for too long
+    if (statusCategory === 'indeterminate' && statusName.toLowerCase().includes('progress')) {
+      if (daysInactive >= THRESHOLDS.ISSUE_IN_PROGRESS_CRITICAL) {
+        findings.push({
+          id: generateId('stuck'),
+          itemType: 'jira_issue',
+          itemKey: issue.key,
+          projectKey,
+          checkType: 'staleness',
+          score: 10,
+          severity: 'critical',
+          message: `Issue stuck "In Progress" for ${daysInactive} days — likely abandoned or blocked`,
+        });
+      } else if (daysInactive >= THRESHOLDS.ISSUE_IN_PROGRESS_WARNING) {
+        findings.push({
+          id: generateId('stuck'),
+          itemType: 'jira_issue',
+          itemKey: issue.key,
+          projectKey,
+          checkType: 'staleness',
+          score: 40,
+          severity: 'high',
+          message: `Issue "In Progress" for ${daysInactive} days without update`,
+        });
+      }
+    }
+  }
+
+  return findings;
+}
+
+export function analyzeConfluenceStaleness(pages: ConfluencePage[], projectKey: string): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const page of pages) {
+    const lastUpdated = page.version?.createdAt;
+    if (!lastUpdated) continue;
+
+    const daysInactive = daysSince(lastUpdated);
+
+    if (daysInactive >= THRESHOLDS.PAGE_STALE_CRITICAL) {
+      findings.push({
+        id: generateId('stale_page'),
+        itemType: 'confluence_page',
+        itemKey: page.id,
+        projectKey,
+        checkType: 'staleness',
+        score: Math.max(0, 100 - Math.floor(daysInactive / 2)),
+        severity: 'high',
+        message: `"${page.title}" not updated for ${daysInactive} days`,
+        details: JSON.stringify({
+          title: page.title,
+          lastUpdated,
+          versionNumber: page.version?.number
+        })
+      });
+    } else if (daysInactive >= THRESHOLDS.PAGE_STALE_WARNING) {
+      findings.push({
+        id: generateId('stale_page'),
+        itemType: 'confluence_page',
+        itemKey: page.id,
+        projectKey,
+        checkType: 'staleness',
+        score: Math.max(30, 100 - Math.floor(daysInactive / 2)),
+        severity: 'medium',
+        message: `"${page.title}" not updated for ${daysInactive} days`,
+      });
+    }
+  }
+
+  return findings;
+}
