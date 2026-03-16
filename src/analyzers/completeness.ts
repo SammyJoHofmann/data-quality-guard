@@ -6,7 +6,7 @@
 // ============================================================
 
 import { JiraIssue, Finding } from '../scanner/types';
-import { generateId, extractTextFromADF, daysSince } from '../utils/helpers';
+import { generateId } from '../utils/helpers';
 
 export function analyzeCompleteness(issues: JiraIssue[], projectKey: string): Finding[] {
   const findings: Finding[] = [];
@@ -16,11 +16,8 @@ export function analyzeCompleteness(issues: JiraIssue[], projectKey: string): Fi
     const isResolved = f.status?.statusCategory?.key === 'done';
     const issueType = f.issuetype?.name?.toLowerCase() || '';
 
-    // Extract text from ADF description (Jira v3 returns ADF objects, not strings)
-    const descText = extractTextFromADF(f.description);
-
-    // No description or too short
-    if (!descText || descText.trim().length < 10) {
+    // No description
+    if (!f.description || f.description.trim().length < 10) {
       findings.push({
         id: generateId('noDesc'),
         itemType: 'jira_issue',
@@ -75,49 +72,13 @@ export function analyzeCompleteness(issues: JiraIssue[], projectKey: string): Fi
       });
     }
 
-    // Overdue issues (due date in the past, not resolved)
-    const fields = f as any;
-    if (fields.duedate && !isResolved) {
-      const overdueDays = daysSince(fields.duedate);
-      if (overdueDays > 0) {
-        const severity = overdueDays > 30 ? 'critical' : overdueDays > 7 ? 'high' : 'medium';
-        findings.push({
-          id: generateId('overdue'),
-          itemType: 'jira_issue',
-          itemKey: issue.key,
-          projectKey,
-          checkType: 'completeness',
-          score: overdueDays > 30 ? 10 : overdueDays > 7 ? 30 : 50,
-          severity,
-          message: `Overdue by ${overdueDays} days (due: ${fields.duedate})`,
-        });
-      }
-    }
-
-    // Story without story points
-    if ((issueType === 'story' || issueType === 'user story') && !isResolved) {
-      const storyPoints = fields.story_points || fields.customfield_10016;
-      if (!storyPoints && storyPoints !== 0) {
-        findings.push({
-          id: generateId('noSP'),
-          itemType: 'jira_issue',
-          itemKey: issue.key,
-          projectKey,
-          checkType: 'completeness',
-          score: 60,
-          severity: 'medium',
-          message: `Story without story points — cannot measure velocity`,
-        });
-      }
-    }
-
-    // Story without acceptance criteria
-    if ((issueType === 'story' || issueType === 'user story') && descText) {
-      const desc = descText.toLowerCase();
-      const hasAC = desc.includes('acceptance') || desc.includes('criteria') ||
+    // Story without acceptance criteria (heuristic: check description for "acceptance" or "criteria" or list markers)
+    if ((issueType === 'story' || issueType === 'user story') && f.description) {
+      const desc = f.description.toLowerCase();
+      const hasAcceptanceCriteria = desc.includes('acceptance') || desc.includes('criteria') ||
         desc.includes('given') || desc.includes('when') || desc.includes('then') ||
         desc.includes('akzeptanzkriterien');
-      if (!hasAC) {
+      if (!hasAcceptanceCriteria) {
         findings.push({
           id: generateId('noAC'),
           itemType: 'jira_issue',

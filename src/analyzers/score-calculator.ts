@@ -7,17 +7,19 @@
 
 import { Finding, ProjectScore } from '../scanner/types';
 
+// Weights for score categories (must sum to 1.0)
+const WEIGHTS = {
+  staleness: 0.30,
+  completeness: 0.30,
+  consistency: 0.20,
+  cross_reference: 0.20,
+};
+
 export function calculateProjectScore(
   findings: Finding[],
   projectKey: string,
-  totalItems: number,
-  hasConfluence = false
+  totalIssues: number
 ): ProjectScore {
-  // Dynamic weights based on available data
-  const weights = hasConfluence
-    ? { staleness: 0.30, completeness: 0.30, consistency: 0.20, cross_reference: 0.20 }
-    : { staleness: 0.45, completeness: 0.45, consistency: 0.10, cross_reference: 0.00 };
-
   // Group findings by check type
   const grouped: Record<string, Finding[]> = {
     staleness: [],
@@ -31,16 +33,20 @@ export function calculateProjectScore(
     grouped[key].push(f);
   }
 
-  const stalenessScore = calculateSubScore(grouped.staleness, totalItems);
-  const completenessScore = calculateSubScore(grouped.completeness, totalItems);
-  const consistencyScore = calculateSubScore(grouped.consistency, totalItems);
-  const crossRefScore = calculateSubScore(grouped.cross_reference, totalItems);
+  // Calculate sub-scores
+  // Score = 100 - penalty
+  // Penalty is based on number and severity of findings relative to total items
+  const stalenessScore = calculateSubScore(grouped.staleness, totalIssues);
+  const completenessScore = calculateSubScore(grouped.completeness, totalIssues);
+  const consistencyScore = calculateSubScore(grouped.consistency, totalIssues);
+  const crossRefScore = calculateSubScore(grouped.cross_reference, totalIssues);
 
+  // Weighted overall score
   const overallScore = Math.round(
-    stalenessScore * weights.staleness +
-    completenessScore * weights.completeness +
-    consistencyScore * weights.consistency +
-    crossRefScore * weights.cross_reference
+    stalenessScore * WEIGHTS.staleness +
+    completenessScore * WEIGHTS.completeness +
+    consistencyScore * WEIGHTS.consistency +
+    crossRefScore * WEIGHTS.cross_reference
   );
 
   return {
@@ -50,7 +56,7 @@ export function calculateProjectScore(
     completenessScore: Math.round(completenessScore),
     consistencyScore: Math.round(consistencyScore),
     crossRefScore: Math.round(crossRefScore),
-    totalIssues: totalItems,
+    totalIssues,
     findingsCount: findings.length,
   };
 }
@@ -58,8 +64,13 @@ export function calculateProjectScore(
 function calculateSubScore(findings: Finding[], totalItems: number): number {
   if (totalItems === 0 || findings.length === 0) return 100;
 
+  // Severity weights for penalty calculation
   const severityPenalty: Record<string, number> = {
-    critical: 5.0, high: 3.0, medium: 1.5, low: 0.5, info: 0.1,
+    critical: 5.0,
+    high: 3.0,
+    medium: 1.5,
+    low: 0.5,
+    info: 0.1,
   };
 
   let totalPenalty = 0;
@@ -67,8 +78,11 @@ function calculateSubScore(findings: Finding[], totalItems: number): number {
     totalPenalty += severityPenalty[f.severity] || 1.0;
   }
 
-  const maxPenalty = totalItems * 2;
+  // Normalize penalty relative to total items
+  // Max penalty per item is 5 (critical), so max total = totalItems * 5
+  const maxPenalty = totalItems * 2; // Realistic max
   const normalizedPenalty = Math.min(totalPenalty / maxPenalty, 1.0);
+
   return 100 * (1 - normalizedPenalty);
 }
 
