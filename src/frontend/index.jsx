@@ -75,9 +75,9 @@ function ProjectDashboard() {
       <Box xcss={cardStyle}>
         <Stack space="space.200">
           <Text weight="bold">{"Was macht diese App?"}</Text>
-          <Text>{"Data Quality Guard scannt automatisch alle Jira-Tickets in diesem Projekt und prueft:"}</Text>
+          <Text>{"Data Quality Guard scannt automatisch alle Jira-Tickets in diesem Projekt und prüft:"}</Text>
           <Text>{"- Sind Tickets aktuell oder veraltet?"}</Text>
-          <Text>{"- Fehlen wichtige Infos wie Beschreibung oder Zustaendiger?"}</Text>
+          <Text>{"- Fehlen wichtige Infos wie Beschreibung oder Zuständiger?"}</Text>
           <Text>{"- Widersprechen sich Jira-Tickets und Confluence-Seiten?"}</Text>
           <Text>{"Am Ende bekommt das Projekt eine Note von 0-100."}</Text>
         </Stack>
@@ -140,14 +140,14 @@ function ProjectDashboard() {
       <Inline space="space.100">
         <Box xcss={statBox}>
           <Stack space="space.050" alignInline="center">
-            <Text size="small">{"Aktualitaet"}</Text>
+            <Text size="small">{"Aktualität"}</Text>
             <Text weight="bold" size="large">{safe(fresh)}</Text>
             <Text size="small">{"Sind Tickets aktuell?"}</Text>
           </Stack>
         </Box>
         <Box xcss={statBox}>
           <Stack space="space.050" alignInline="center">
-            <Text size="small">{"Vollstaendigkeit"}</Text>
+            <Text size="small">{"Vollständigkeit"}</Text>
             <Text weight="bold" size="large">{safe(complete)}</Text>
             <Text size="small">{"Fehlen Infos?"}</Text>
           </Stack>
@@ -156,7 +156,7 @@ function ProjectDashboard() {
           <Stack space="space.050" alignInline="center">
             <Text size="small">{"Konsistenz"}</Text>
             <Text weight="bold" size="large">{safe(consist)}</Text>
-            <Text size="small">{"Widerspruche?"}</Text>
+            <Text size="small">{"Widersprüche?"}</Text>
           </Stack>
         </Box>
         <Box xcss={statBox}>
@@ -193,7 +193,7 @@ function IssuePanel() {
     invoke('getIssueQuality').then(setData).catch(console.error).finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <Text>{"Wird geprueft..."}</Text>;
+  if (loading) return <Text>{"Wird geprüft..."}</Text>;
   if (!data || !data.findings || data.findings.length === 0) {
     return <Lozenge appearance="success" isBold>{"Keine Probleme"}</Lozenge>;
   }
@@ -220,7 +220,7 @@ function ConfluenceDashboard() {
     invoke('getDashboardData').then(setData).catch(console.error).finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <Text>{"Lade Uebersicht..."}</Text>;
+  if (loading) return <Text>{"Lade Übersicht..."}</Text>;
   const scores = data?.scores || [];
   if (scores.length === 0) return (
     <Stack space="space.200">
