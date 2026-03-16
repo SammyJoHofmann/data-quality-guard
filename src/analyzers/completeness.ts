@@ -6,7 +6,7 @@
 // ============================================================
 
 import { JiraIssue, Finding } from '../scanner/types';
-import { generateId, extractTextFromADF } from '../utils/helpers';
+import { generateId, extractTextFromADF, daysSince } from '../utils/helpers';
 
 export function analyzeCompleteness(issues: JiraIssue[], projectKey: string): Finding[] {
   const findings: Finding[] = [];
@@ -73,6 +73,42 @@ export function analyzeCompleteness(issues: JiraIssue[], projectKey: string): Fi
         severity: 'low',
         message: `No priority set`,
       });
+    }
+
+    // Overdue issues (due date in the past, not resolved)
+    const fields = f as any;
+    if (fields.duedate && !isResolved) {
+      const overdueDays = daysSince(fields.duedate);
+      if (overdueDays > 0) {
+        const severity = overdueDays > 30 ? 'critical' : overdueDays > 7 ? 'high' : 'medium';
+        findings.push({
+          id: generateId('overdue'),
+          itemType: 'jira_issue',
+          itemKey: issue.key,
+          projectKey,
+          checkType: 'completeness',
+          score: overdueDays > 30 ? 10 : overdueDays > 7 ? 30 : 50,
+          severity,
+          message: `Overdue by ${overdueDays} days (due: ${fields.duedate})`,
+        });
+      }
+    }
+
+    // Story without story points
+    if ((issueType === 'story' || issueType === 'user story') && !isResolved) {
+      const storyPoints = fields.story_points || fields.customfield_10016;
+      if (!storyPoints && storyPoints !== 0) {
+        findings.push({
+          id: generateId('noSP'),
+          itemType: 'jira_issue',
+          itemKey: issue.key,
+          projectKey,
+          checkType: 'completeness',
+          score: 60,
+          severity: 'medium',
+          message: `Story without story points — cannot measure velocity`,
+        });
+      }
     }
 
     // Story without acceptance criteria

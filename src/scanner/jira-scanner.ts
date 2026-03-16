@@ -27,38 +27,36 @@ export async function getProjectIssues(
   let startAt = 0;
   let hasMore = true;
 
-  const jqlParts = [`project = "${projectKey}"`];
+  const jqlParts = [`project = ${projectKey}`];
   if (updatedSince) {
     jqlParts.push(`updated >= "${updatedSince}"`);
   }
   const jql = jqlParts.join(' AND ');
 
   while (hasMore) {
-    const body = JSON.stringify({
-      jql,
-      startAt,
-      maxResults: MAX_RESULTS,
-      fields: [
-        'summary', 'description', 'status', 'assignee', 'reporter',
-        'created', 'updated', 'priority', 'issuetype', 'labels',
-        'components', 'resolution', 'project', 'parent'
-      ]
-    });
-
+    // POST to /search/jql with JSON body (new Jira API, old /search was removed)
+    const searchBody = JSON.stringify({ jql, startAt, maxResults: MAX_RESULTS, fields: [
+      'summary', 'description', 'status', 'assignee', 'reporter',
+      'created', 'updated', 'priority', 'issuetype', 'labels',
+      'components', 'resolution', 'project', 'parent', 'duedate'
+    ]});
+    console.log(`[JiraScanner] Searching: jql="${jql}" startAt=${startAt}`);
     const response = await api.asApp().requestJira(
-      route`/rest/api/3/search`,
+      route`/rest/api/3/search/jql`,
       {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json'
         },
-        body
+        body: searchBody
       }
     );
 
     if (!response.ok) {
-      console.error(`[JiraScanner] API error: ${response.status}`);
+      let errText = '';
+      try { errText = await response.text(); } catch {}
+      console.error(`[JiraScanner] API error ${response.status}: JQL="${jql}" Body="${errText.substring(0, 500)}"`);
       break;
     }
 

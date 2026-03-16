@@ -29,10 +29,21 @@ export async function analyzeWorkflowAnomalies(
   // Limit changelog lookups to 50 issues max for performance
   const toCheck = candidates.slice(0, 50);
 
-  for (const issue of toCheck) {
-    try {
-      const changelog = await getIssueChangelog(issue.key);
+  // Parallelized in batches of 5 to avoid N+1
+  for (let i = 0; i < toCheck.length; i += 5) {
+    const batch = toCheck.slice(i, i + 5);
+    const changelogResults = await Promise.all(
+      batch.map(async (issue) => {
+        try {
+          const changelog = await getIssueChangelog(issue.key);
+          return { issue, changelog };
+        } catch {
+          return { issue, changelog: [] as any[] };
+        }
+      })
+    );
 
+    for (const { issue, changelog } of changelogResults) {
       for (const entry of changelog) {
         for (const item of entry.items || []) {
           if (item.field !== 'status') continue;
@@ -62,8 +73,6 @@ export async function analyzeWorkflowAnomalies(
           }
         }
       }
-    } catch {
-      // Skip issues where changelog fails
     }
   }
 
@@ -176,6 +185,52 @@ export function analyzeOverloadedAssignees(
           threshold
         })
       });
+    }
+  }
+
+  return findings;
+}
+
+/**
+ * Detects sprint spillover: issues in a closed sprint that are not Done.
+ * These are issues that didn't get completed in their sprint.
+ */
+export function analyzeSprintSpillover(
+  issues: JiraIssue[],
+  projectKey: string
+): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const issue of issues) {
+    const fields = issue.fields as any;
+    const isResolved = fields.status?.statusCategory?.key === 'done';
+    if (isResolved) continue;
+
+    // Sprint field can be an array of sprint objects
+    const sprints = fields.sprint ? [fields.sprint] : (fields.customfield_10020 || []);
+    if (!Array.isArray(sprints) || sprints.length === 0) continue;
+
+    for (const sprint of sprints) {
+      if (!sprint) continue;
+      const sprintState = (sprint.state || '').toLowerCase();
+      if (sprintState === 'closed') {
+        findings.push({
+          id: generateId('spillover'),
+          itemType: 'jira_issue',
+          itemKey: issue.key,
+          projectKey,
+          checkType: 'consistency',
+          score: 40,
+          severity: 'high',
+          message: `Sprint spillover: not Done but in closed sprint "${sprint.name || 'Unknown'}"`,
+          details: JSON.stringify({
+            sprintName: sprint.name,
+            sprintState: sprint.state,
+            currentStatus: fields.status?.name
+          })
+        });
+        break; // One finding per issue
+      }
     }
   }
 

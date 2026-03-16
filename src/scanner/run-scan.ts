@@ -6,15 +6,15 @@
 // ============================================================
 
 import { getProjectIssues } from './jira-scanner';
-import { getAllSpaces, getSpacePages, getPageContent, extractJiraKeys } from './confluence-scanner';
+import { findSpacesByKey, getSpacePages, getPageContent, extractJiraKeys } from './confluence-scanner';
 import { analyzeJiraStaleness, analyzeConfluenceStaleness } from '../analyzers/staleness';
 import { analyzeCompleteness } from '../analyzers/completeness';
 import { analyzeCrossReferences } from '../analyzers/cross-reference';
-import { analyzeWorkflowAnomalies, analyzeOrphanIssues, analyzeOverloadedAssignees } from '../analyzers/advanced-checks';
+import { analyzeWorkflowAnomalies, analyzeOrphanIssues, analyzeOverloadedAssignees, analyzeSprintSpillover } from '../analyzers/advanced-checks';
 import { calculateProjectScore } from '../analyzers/score-calculator';
 // AI analysis temporarily disabled until deploy issue resolved
 // import { analyzeWithLLM, parseLLMResult } from '../ai/llm-client';
-import { upsertScanResult, saveProjectScore, clearProjectResults, startScan, completeScan, getConfig } from '../db/queries';
+import { upsertScanResult, saveProjectScore, clearProjectResults, startScan, completeScan, failScan, getConfig, batchUpsertScanResults, isScanRunning } from '../db/queries';
 import { Finding, ProjectScore } from './types';
 import { generateId, stripHtml } from '../utils/helpers';
 
@@ -22,98 +22,127 @@ export async function runProjectScan(projectKey: string): Promise<ProjectScore> 
   const scanId = generateId('scan');
   console.log(`[Scan] Starting full scan for ${projectKey} (${scanId})`);
 
+  // === SCAN LOCK: Prevent concurrent scans ===
+  try {
+    const alreadyRunning = await isScanRunning(projectKey);
+    if (alreadyRunning) {
+      console.log(`[Scan] Scan already running for ${projectKey}, skipping`);
+      throw new Error(`Scan already running for ${projectKey}`);
+    }
+  } catch (err: any) {
+    if (err.message?.includes('already running')) throw err;
+    /* table might not exist on first run */
+  }
+
   try {
     await startScan(scanId, projectKey, 'full');
   } catch { /* table might not exist on first run */ }
 
-  const allFindings: Finding[] = [];
-  let totalItems = 0;
-
-  // === 1. JIRA SCAN ===
-  const issues = await getProjectIssues(projectKey);
-  totalItems += issues.length;
-  console.log(`[Scan] ${projectKey}: ${issues.length} Jira issues`);
-
-  // Jira Analyzers — core checks
-  allFindings.push(...analyzeJiraStaleness(issues, projectKey));
-  allFindings.push(...analyzeCompleteness(issues, projectKey));
-
-  // Jira Analyzers — advanced checks
-  allFindings.push(...analyzeOrphanIssues(issues, projectKey));
-
-  const overloadThreshold = parseInt(await getConfig('overload_threshold', '15'), 10);
-  allFindings.push(...analyzeOverloadedAssignees(issues, projectKey, overloadThreshold));
-
   try {
-    const workflowFindings = await analyzeWorkflowAnomalies(issues, projectKey);
-    allFindings.push(...workflowFindings);
-    console.log(`[Scan] ${projectKey}: ${workflowFindings.length} workflow anomalies found`);
-  } catch (err) {
-    console.log(`[Scan] Workflow anomaly check failed: ${err}`);
-  }
+    const allFindings: Finding[] = [];
+    let totalItems = 0;
 
-  // === 2. CONFLUENCE SCAN ===
-  let allPages: any[] = [];
-  const pageContents = new Map<string, string>();
+    // === 1. JIRA SCAN ===
+    const issues = await getProjectIssues(projectKey);
+    totalItems += issues.length;
+    console.log(`[Scan] ${projectKey}: ${issues.length} Jira issues`);
 
-  try {
-    const spaces = await getAllSpaces();
-    // Match spaces by exact key or word-boundary name match
-    const matchingSpaces = spaces.filter(s => {
-      if (s.key?.toUpperCase() === projectKey.toUpperCase()) return true;
-      const regex = new RegExp(`\\b${projectKey}\\b`, 'i');
-      return regex.test(s.name || '');
-    });
+    // Jira Analyzers — core checks
+    allFindings.push(...analyzeJiraStaleness(issues, projectKey));
+    allFindings.push(...analyzeCompleteness(issues, projectKey));
 
-    for (const space of matchingSpaces.slice(0, 3)) {
-      const pages = await getSpacePages(space.id);
-      allPages.push(...pages);
+    // Jira Analyzers — advanced checks
+    allFindings.push(...analyzeOrphanIssues(issues, projectKey));
 
-      // Get content for cross-references (limit to 30 pages for performance)
-      for (const page of pages.slice(0, 30)) {
-        try {
-          const content = await getPageContent(page.id);
-          if (content) pageContents.set(page.id, content);
-        } catch { /* skip failed pages */ }
+    const overloadThreshold = parseInt(await getConfig('overload_threshold', '15'), 10);
+    allFindings.push(...analyzeOverloadedAssignees(issues, projectKey, overloadThreshold));
+
+    // Sprint spillover check
+    allFindings.push(...analyzeSprintSpillover(issues, projectKey));
+
+    try {
+      const workflowFindings = await analyzeWorkflowAnomalies(issues, projectKey);
+      allFindings.push(...workflowFindings);
+      console.log(`[Scan] ${projectKey}: ${workflowFindings.length} workflow anomalies found`);
+    } catch (err) {
+      console.log(`[Scan] Workflow anomaly check failed: ${err}`);
+    }
+
+    // === 2. CONFLUENCE SCAN ===
+    let allPages: any[] = [];
+    const pageContents = new Map<string, string>();
+
+    try {
+      const matchingSpaces = await findSpacesByKey(projectKey);
+
+      for (const space of matchingSpaces.slice(0, 3)) {
+        const pages = await getSpacePages(space.id);
+        allPages.push(...pages);
+
+        // Get content for cross-references — parallelized in batches of 5
+        const pagesToFetch = pages.slice(0, 30);
+        for (let i = 0; i < pagesToFetch.length; i += 5) {
+          const batch = pagesToFetch.slice(i, i + 5);
+          const results = await Promise.all(
+            batch.map(async (page) => {
+              try {
+                const content = await getPageContent(page.id);
+                return { id: page.id, content };
+              } catch { return { id: page.id, content: '' }; }
+            })
+          );
+          for (const r of results) {
+            if (r.content) pageContents.set(r.id, r.content);
+          }
+        }
+      }
+
+      totalItems += allPages.length;
+      console.log(`[Scan] ${projectKey}: ${allPages.length} Confluence pages from ${matchingSpaces.length} spaces`);
+
+      // Confluence Staleness
+      allFindings.push(...analyzeConfluenceStaleness(allPages, projectKey));
+
+      // Cross-References (Confluence → Jira)
+      allFindings.push(...analyzeCrossReferences(issues, allPages, pageContents, projectKey));
+
+    } catch (err) {
+      console.log(`[Scan] Confluence scan failed (may not be installed): ${err}`);
+    }
+
+    // === 3. KI ANALYSIS (Widerspruchserkennung) ===
+    console.log(`[Scan] AI analysis: Requires API key configuration (skipped for now)`);
+
+    console.log(`[Scan] ${projectKey}: ${allFindings.length} total findings`);
+
+    // === 4. SAVE RESULTS (batch insert) ===
+    try { await clearProjectResults(projectKey); } catch { /* ok */ }
+
+    const findingsToSave = allFindings.slice(0, 200);
+    try {
+      await batchUpsertScanResults(findingsToSave);
+    } catch {
+      // Fallback: insert one by one
+      for (const finding of findingsToSave) {
+        try { await upsertScanResult(finding); } catch { /* skip failed */ }
       }
     }
 
-    totalItems += allPages.length;
-    console.log(`[Scan] ${projectKey}: ${allPages.length} Confluence pages from ${matchingSpaces.length} spaces`);
+    // === 5. CALCULATE SCORE ===
+    const hasConfluence = allPages.length > 0;
+    const score = calculateProjectScore(allFindings, projectKey, totalItems, hasConfluence);
 
-    // Confluence Staleness
-    allFindings.push(...analyzeConfluenceStaleness(allPages, projectKey));
+    try { await saveProjectScore(score); } catch { /* ok */ }
+    try { await completeScan(scanId, totalItems, allFindings.length); } catch { /* ok */ }
 
-    // Cross-References (Confluence → Jira)
-    allFindings.push(...analyzeCrossReferences(issues, allPages, pageContents, projectKey));
+    console.log(`[Scan] ${projectKey}: Score = ${score.overallScore}/100 (${allFindings.length} findings, ${totalItems} items)`);
+    return score;
 
   } catch (err) {
-    console.log(`[Scan] Confluence scan failed (may not be installed): ${err}`);
+    console.error(`[Scan] Scan failed for ${projectKey}:`, err);
+    try { await failScan(scanId); } catch { /* ok */ }
+    throw err;
   }
-
-  // === 3. KI ANALYSIS (Widerspruchserkennung) ===
-  // AI analysis runs when Anthropic API key is configured
-  // For now, rule-based cross-references handle consistency checks
-  console.log(`[Scan] AI analysis: Requires API key configuration (skipped for now)`);
-
-  console.log(`[Scan] ${projectKey}: ${allFindings.length} total findings`);
-
-  // === 4. SAVE RESULTS ===
-  try { await clearProjectResults(projectKey); } catch { /* ok */ }
-
-  for (const finding of allFindings.slice(0, 200)) {
-    try { await upsertScanResult(finding); } catch { /* skip failed */ }
-  }
-
-  // === 5. CALCULATE SCORE ===
-  const hasConfluence = allPages.length > 0;
-  const score = calculateProjectScore(allFindings, projectKey, totalItems, hasConfluence);
-
-  try { await saveProjectScore(score); } catch { /* ok */ }
-  try { await completeScan(scanId, totalItems, allFindings.length); } catch { /* ok */ }
-
-  console.log(`[Scan] ${projectKey}: Score = ${score.overallScore}/100 (${allFindings.length} findings, ${totalItems} items)`);
-  return score;
 }
 
 /**

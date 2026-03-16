@@ -5,7 +5,7 @@
 // PURPOSE: Daily report generation trigger
 // ============================================================
 
-import { getAllProjectScores } from '../db/queries';
+import { getAllProjectScores, cleanupOldData } from '../db/queries';
 import { initializeDatabase } from '../db/schema';
 
 export async function handler(): Promise<void> {
@@ -21,5 +21,13 @@ export async function handler(): Promise<void> {
 
   for (const p of criticalProjects) {
     console.log(`[ScheduledReport] CRITICAL: ${p.project_key} score=${p.overall_score} findings=${p.findings_count}`);
+  }
+
+  // Data retention: clean up old data
+  try {
+    const cleaned = await cleanupOldData();
+    console.log(`[ScheduledReport] Data retention: deleted ${cleaned.deletedScores} old scores, ${cleaned.deletedScans} old scan records`);
+  } catch (err) {
+    console.log(`[ScheduledReport] Data retention cleanup failed: ${err}`);
   }
 }
