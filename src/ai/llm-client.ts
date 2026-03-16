@@ -70,28 +70,10 @@ export async function analyzeWithLLM(
   }
 }
 
-async function callForgeLLM(userPrompt: string): Promise<LLMResponse> {
-  // @forge/llm is only available in EAP — skip if not installed
+async function callForgeLLM(_userPrompt: string): Promise<LLMResponse> {
+  // @forge/llm is EAP only — not available for production.
+  // When GA, replace this with actual Forge LLMs API call.
   throw new Error('Forge LLMs API not available — using external Claude API fallback');
-
-  // When @forge/llm becomes GA, uncomment this:
-  // const { chat } = require('@forge/llm');
-  let chat: any;
-
-  const response = await chat({
-    model: 'claude-sonnet-4-20250514',
-    messages: [
-      { role: 'system', content: CONTRADICTION_SYSTEM_PROMPT },
-      { role: 'user', content: userPrompt }
-    ],
-    temperature: 0.1,
-    max_completion_tokens: 2000
-  });
-
-  const content = response.choices?.[0]?.message?.content || '';
-  const text = typeof content === 'string' ? content : (content as any)[0]?.text || '';
-
-  return { content: text, model: 'claude-sonnet-4', source: 'forge' };
 }
 
 async function callExternalClaude(userPrompt: string): Promise<LLMResponse> {

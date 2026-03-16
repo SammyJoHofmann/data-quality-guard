@@ -46,7 +46,7 @@ export async function getProjectIssues(
     });
 
     const response = await api.asApp().requestJira(
-      route`/rest/api/3/search/jql`,
+      route`/rest/api/3/search`,
       {
         method: 'POST',
         headers: {

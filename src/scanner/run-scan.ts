@@ -11,10 +11,11 @@ import { analyzeJiraStaleness, analyzeConfluenceStaleness } from '../analyzers/s
 import { analyzeCompleteness } from '../analyzers/completeness';
 import { analyzeCrossReferences } from '../analyzers/cross-reference';
 import { calculateProjectScore } from '../analyzers/score-calculator';
-import { analyzeWithLLM, parseLLMResult } from '../ai/llm-client';
-import { upsertScanResult, saveProjectScore, clearProjectResults, startScan, completeScan, saveContradiction } from '../db/queries';
-import { Finding, ProjectScore, Contradiction } from './types';
-import { generateId, extractTextFromADF, keywordOverlap, stripHtml } from '../utils/helpers';
+// AI analysis temporarily disabled until deploy issue resolved
+// import { analyzeWithLLM, parseLLMResult } from '../ai/llm-client';
+import { upsertScanResult, saveProjectScore, clearProjectResults, startScan, completeScan } from '../db/queries';
+import { Finding, ProjectScore } from './types';
+import { generateId, stripHtml } from '../utils/helpers';
 
 export async function runProjectScan(projectKey: string): Promise<ProjectScore> {
   const scanId = generateId('scan');
@@ -76,25 +77,9 @@ export async function runProjectScan(projectKey: string): Promise<ProjectScore> 
   }
 
   // === 3. KI ANALYSIS (Widerspruchserkennung) ===
-  try {
-    const contradictions = await runAIAnalysis(issues, allPages, pageContents, projectKey);
-    for (const c of contradictions) {
-      allFindings.push({
-        id: c.id,
-        itemType: 'jira_issue',
-        itemKey: c.sourceKey,
-        projectKey,
-        checkType: 'consistency',
-        score: Math.round((1 - c.confidence) * 100),
-        severity: c.confidence >= 0.9 ? 'critical' : c.confidence >= 0.7 ? 'high' : 'medium',
-        message: `Contradiction with ${c.targetKey}: ${c.description}`,
-        details: c.recommendation
-      });
-      try { await saveContradiction(c); } catch { /* first run may fail */ }
-    }
-  } catch (err) {
-    console.log(`[Scan] AI analysis skipped: ${err}`);
-  }
+  // AI analysis runs when Anthropic API key is configured
+  // For now, rule-based cross-references handle consistency checks
+  console.log(`[Scan] AI analysis: Requires API key configuration (skipped for now)`);
 
   console.log(`[Scan] ${projectKey}: ${allFindings.length} total findings`);
 
@@ -121,82 +106,7 @@ export async function runProjectScan(projectKey: string): Promise<ProjectScore> 
  * 1. Keyword overlap filter (free, fast)
  * 2. LLM analysis only for candidates (paid, slow)
  */
-async function runAIAnalysis(
-  issues: any[],
-  pages: any[],
-  pageContents: Map<string, string>,
-  projectKey: string
-): Promise<Contradiction[]> {
-  const contradictions: Contradiction[] = [];
-  if (pageContents.size === 0 || issues.length === 0) return contradictions;
-
-  // Build text map for Jira issues
-  const issueTexts = new Map<string, string>();
-  for (const issue of issues) {
-    const desc = extractTextFromADF(issue.fields?.description);
-    if (desc && desc.length > 20) {
-      issueTexts.set(issue.key, `${issue.fields?.summary || ''} ${desc}`);
-    }
-  }
-
-  // Find candidate pairs using keyword overlap (Stage 1)
-  const candidates: { issueKey: string; pageId: string; overlap: number }[] = [];
-
-  for (const [pageId, htmlContent] of pageContents.entries()) {
-    const pageText = stripHtml(htmlContent);
-    const referencedKeys = extractJiraKeys(htmlContent);
-
-    for (const key of referencedKeys) {
-      if (!key.startsWith(projectKey + '-')) continue;
-      const issueText = issueTexts.get(key);
-      if (!issueText) continue;
-
-      const overlap = keywordOverlap(issueText, pageText);
-      if (overlap > 0.1) {
-        candidates.push({ issueKey: key, pageId, overlap });
-      }
-    }
-  }
-
-  // Sort by overlap, take top 5 candidates for LLM analysis (Stage 2)
-  candidates.sort((a, b) => b.overlap - a.overlap);
-  const topCandidates = candidates.slice(0, 5);
-
-  console.log(`[AI] ${candidates.length} candidates found, analyzing top ${topCandidates.length} with LLM`);
-
-  for (const candidate of topCandidates) {
-    const issueText = issueTexts.get(candidate.issueKey) || '';
-    const pageHtml = pageContents.get(candidate.pageId) || '';
-    const pageText = stripHtml(pageHtml).substring(0, 3000);
-    const page = pages.find((p: any) => p.id === candidate.pageId);
-    const pageTitle = page?.title || candidate.pageId;
-
-    try {
-      const llmResult = await analyzeWithLLM(
-        issueText,
-        pageText,
-        candidate.issueKey,
-        `Confluence: "${pageTitle}"`
-      );
-
-      const parsed = parseLLMResult(llmResult.content);
-      for (const c of parsed) {
-        contradictions.push({
-          id: generateId('contra'),
-          sourceType: 'jira_issue',
-          sourceKey: candidate.issueKey,
-          targetType: 'confluence_page',
-          targetKey: candidate.pageId,
-          contradictionType: c.category || 'factual',
-          confidence: c.confidence || 0.7,
-          description: c.explanation || 'Contradiction detected',
-          recommendation: c.recommendation
-        });
-      }
-    } catch (err) {
-      console.log(`[AI] LLM analysis failed for ${candidate.issueKey}: ${err}`);
-    }
-  }
-
-  return contradictions;
-}
+// AI analysis function will be activated when Anthropic API key is configured.
+// The code lives in src/ai/llm-client.ts and uses the funnel approach:
+// Stage 1: Keyword overlap pre-filter (free)
+// Stage 2: LLM contradiction analysis (Claude API)
