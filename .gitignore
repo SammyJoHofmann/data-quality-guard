@@ -3,3 +3,5 @@ out/
 .env
 *.log
 .forge/
+static/frontend/node_modules/
+static/frontend/build/

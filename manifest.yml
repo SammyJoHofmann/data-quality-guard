@@ -4,30 +4,27 @@ app:
     name: nodejs22.x
 
 modules:
-  # === JIRA: Projekt-Dashboard ===
+  # === JIRA: Projekt-Dashboard (Custom UI) ===
   jira:projectPage:
     - key: dq-project-dashboard
       resource: main
-      render: native
       resolver:
         function: jira-resolver
       title: Data Quality Score
 
-  # === JIRA: Issue Panel ===
+  # === JIRA: Issue Panel (Custom UI) ===
   jira:issuePanel:
     - key: dq-issue-panel
       resource: main
-      render: native
       resolver:
         function: issue-resolver
       title: Quality Check
       icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
 
-  # === CONFLUENCE: Global Page ===
+  # === CONFLUENCE: Global Page (Custom UI) ===
   confluence:globalPage:
     - key: dq-confluence-dashboard
       resource: main
-      render: native
       resolver:
         function: confluence-resolver
       route: data-quality
@@ -122,13 +119,16 @@ modules:
     - key: get-report
       handler: actions/get-report.handler
 
-# === UI RESOURCES (single entry point) ===
+# === UI RESOURCES (Custom UI — built React app) ===
 resources:
   - key: main
-    path: src/frontend/index.jsx
+    path: static/frontend/build
 
 # === PERMISSIONS ===
 permissions:
+  content:
+    styles:
+      - 'unsafe-inline'
   scopes:
     - read:jira-work
     - read:jira-user
