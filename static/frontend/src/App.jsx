@@ -1,180 +1,159 @@
-// ============================================================
-// FILE: App.jsx
-// PATH: static/frontend/src/App.jsx
-// PROJECT: DataQualityGuard — Custom UI
-// PURPOSE: Premium Dashboard mit eigenem Design
-// ============================================================
-
 import React, { useEffect, useState } from 'react';
 import { invoke, view, router } from '@forge/bridge';
 
-// === HELPERS ===
 const safe = (v) => (v == null ? '' : String(v));
 const safeNum = (v) => Number(v) || 0;
 
 function getGrade(score) {
   const s = safeNum(score);
-  if (s >= 90) return { grade: 'A', label: 'Ausgezeichnet', cls: 'dq-grade-a' };
-  if (s >= 75) return { grade: 'B', label: 'Gut', cls: 'dq-grade-b' };
-  if (s >= 60) return { grade: 'C', label: 'Befriedigend', cls: 'dq-grade-c' };
-  if (s >= 40) return { grade: 'D', label: 'Mangelhaft', cls: 'dq-grade-d' };
-  return { grade: 'F', label: 'Kritisch', cls: 'dq-grade-f' };
+  if (s >= 90) return { g: 'A', l: 'Ausgezeichnet', c: 'grade-a', color: 'var(--grade-a)' };
+  if (s >= 75) return { g: 'B', l: 'Gut', c: 'grade-b', color: 'var(--grade-b)' };
+  if (s >= 60) return { g: 'C', l: 'Befriedigend', c: 'grade-c', color: 'var(--grade-c)' };
+  if (s >= 40) return { g: 'D', l: 'Mangelhaft', c: 'grade-d', color: 'var(--grade-d)' };
+  return { g: 'F', l: 'Kritisch', c: 'grade-f', color: 'var(--grade-f)' };
 }
 
-function getBarColor(score) {
-  const s = safeNum(score);
-  if (s >= 80) return 'var(--dq-grade-a)';
-  if (s >= 60) return 'var(--dq-grade-c)';
-  if (s >= 40) return 'var(--dq-grade-d)';
-  return 'var(--dq-grade-f)';
-}
-
-function getSevLabel(sev) {
-  if (sev === 'critical') return 'Kritisch';
-  if (sev === 'high') return 'Hoch';
-  if (sev === 'medium') return 'Mittel';
+function sevLabel(s) {
+  if (s === 'critical') return 'Kritisch';
+  if (s === 'high') return 'Hoch';
+  if (s === 'medium') return 'Mittel';
   return 'Niedrig';
 }
 
-function getSevCls(sev) {
-  if (sev === 'critical') return 'dq-sev-critical';
-  if (sev === 'high') return 'dq-sev-high';
-  if (sev === 'medium') return 'dq-sev-medium';
-  return 'dq-sev-low';
+function sevCls(s) {
+  if (s === 'critical') return 'sev-critical';
+  if (s === 'high') return 'sev-high';
+  if (s === 'medium') return 'sev-medium';
+  return 'sev-low';
 }
 
-function getCheckLabel(t) {
-  if (!t) return '';
-  if (t.includes('stale')) return 'Veraltet';
-  if (t.includes('no_description') || t.includes('missing_description') || t.includes('completeness')) return 'Unvollständig';
-  if (t.includes('no_assignee') || t.includes('unassigned')) return 'Nicht zugewiesen';
-  if (t.includes('no_labels')) return 'Keine Labels';
-  if (t.includes('no_priority')) return 'Keine Priorität';
-  if (t.includes('consistency') || t.includes('contradiction')) return 'Widerspruch';
-  if (t.includes('cross_ref')) return 'Defekter Verweis';
-  if (t.includes('lost_knowledge')) return 'Verlorenes Wissen';
-  if (t.includes('sprint_readiness')) return 'Nicht Sprint-bereit';
-  if (t.includes('stale_doc')) return 'Doku veraltet';
-  return t;
-}
-
-function getRecommendation(f) {
-  const t = safe(f.check_type);
-  const sev = safe(f.severity);
-  if (t.includes('stale')) return sev === 'critical' ? 'Sofort schließen oder aktualisieren' : 'Aktualisieren oder schließen';
-  if (t.includes('no_description') || t.includes('completeness')) return 'Beschreibung mit Kontext hinzufügen';
-  if (t.includes('no_assignee')) return sev === 'critical' || sev === 'high' ? 'Dringend: Verantwortlichen zuweisen!' : 'Verantwortlichen zuweisen';
-  if (t.includes('no_labels')) return 'Labels für Kategorisierung vergeben';
+function recommend(f) {
+  const t = safe(f.check_type), s = safe(f.severity);
+  if (t.includes('stale')) return s === 'critical' ? 'Sofort schließen oder aktualisieren' : 'Aktualisieren oder schließen';
+  if (t.includes('no_description') || t.includes('completeness')) return 'Beschreibung hinzufügen';
+  if (t.includes('no_assignee')) return s === 'critical' || s === 'high' ? 'Dringend zuweisen!' : 'Zuweisen';
+  if (t.includes('no_labels')) return 'Labels vergeben';
   if (t.includes('no_priority')) return 'Priorität setzen';
-  if (t.includes('lost_knowledge')) return 'Aktivem Teammitglied zuweisen';
-  if (t.includes('sprint_readiness')) return 'Pflichtfelder vor Sprint ergänzen';
-  if (t.includes('stale_doc')) return 'Confluence-Seite aktualisieren';
-  if (t.includes('contradiction') || t.includes('consistency')) return 'Doku aktualisieren — Widerspruch beheben';
-  if (t.includes('cross_ref')) return 'Verlinkung prüfen und korrigieren';
-  if (t.includes('workflow')) return 'Workflow prüfen — Nacharbeit?';
+  if (t.includes('lost_knowledge')) return 'Aktivem Mitglied zuweisen';
+  if (t.includes('sprint_readiness')) return 'Pflichtfelder ergänzen';
+  if (t.includes('stale_doc')) return 'Confluence aktualisieren';
+  if (t.includes('contradiction') || t.includes('consistency')) return 'Widerspruch beheben';
+  if (t.includes('cross_ref')) return 'Verlinkung korrigieren';
+  if (t.includes('workflow')) return 'Workflow prüfen';
   if (t.includes('overloaded')) return 'Aufgaben umverteilen';
   if (t.includes('spillover')) return 'Sprint-Überlauf klären';
-  return 'Prüfen und beheben';
+  return 'Prüfen';
 }
 
-function formatDate(d) {
-  if (!d) return '';
+function fmtDate(d) {
+  if (!d) return '–';
   try {
     const dt = new Date(d);
     if (isNaN(dt.getTime())) return d;
-    return `${String(dt.getDate()).padStart(2, '0')}.${String(dt.getMonth() + 1).padStart(2, '0')}.${dt.getFullYear()} ${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+    const dd = String(dt.getDate()).padStart(2, '0');
+    const mm = String(dt.getMonth() + 1).padStart(2, '0');
+    return `${dd}.${mm}.${dt.getFullYear()} ${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
   } catch { return d; }
 }
 
-function formatDateShort(d) {
+function fmtShort(d) {
   if (!d) return '';
   try { const dt = new Date(d); return `${String(dt.getDate()).padStart(2, '0')}.${String(dt.getMonth() + 1).padStart(2, '0')}`; }
   catch { return ''; }
 }
 
-// === SETTINGS PANEL ===
-function SettingsPanel({ onClose }) {
-  const [apiKey, setApiKey] = useState('');
-  const [aiEnabled, setAiEnabled] = useState(false);
+// SVG Score Ring
+function ScoreRing({ score, size = 88, stroke = 6 }) {
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (safeNum(score) / 100) * circ;
+  const grade = getGrade(score);
+  return (
+    <div className="score-ring" style={{ width: size, height: size }}>
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        <circle className="score-ring-bg" cx={size / 2} cy={size / 2} r={r} />
+        <circle className="score-ring-fill" cx={size / 2} cy={size / 2} r={r}
+          stroke={grade.color} strokeDasharray={circ} strokeDashoffset={offset} />
+      </svg>
+      <div className="score-ring-text">
+        <span className="score-value" style={{ color: grade.color }}>{Math.round(safeNum(score))}</span>
+        <span className="score-max">/100</span>
+      </div>
+    </div>
+  );
+}
+
+// SVG Icons (inline, no external deps)
+const IconSettings = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>;
+const IconScan = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="21 3 21 12 12 12"/></svg>;
+const IconBack = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m15 18-6-6 6-6"/></svg>;
+
+// === SETTINGS ===
+function Settings({ onClose }) {
+  const [key, setKey] = useState('');
+  const [ai, setAi] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
-  const [loaded, setLoaded] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     invoke('getSettings').then(s => {
-      if (s) { setApiKey(safe(s.apiKey)); setAiEnabled(s.aiEnabled === true || s.aiEnabled === 'true'); }
-      setLoaded(true);
-    }).catch(() => setLoaded(true));
+      if (s) { setKey(safe(s.apiKey)); setAi(s.aiEnabled === true || s.aiEnabled === 'true'); }
+      setReady(true);
+    }).catch(() => setReady(true));
   }, []);
 
-  const handleSave = async () => {
+  const save = async () => {
     setSaving(true); setMsg(null);
-    try { await invoke('saveSettings', { apiKey, aiEnabled }); setMsg({ ok: true, text: 'Einstellungen gespeichert!' }); }
-    catch (e) { setMsg({ ok: false, text: 'Fehler: ' + safe(e?.message) }); }
+    try { await invoke('saveSettings', { apiKey: key, aiEnabled: ai }); setMsg({ ok: true, t: 'Gespeichert' }); }
+    catch (e) { setMsg({ ok: false, t: safe(e?.message) }); }
     setSaving(false);
   };
 
-  const handleDelete = async () => {
+  const del = async () => {
     setSaving(true);
-    try { await invoke('deleteApiKey'); setApiKey(''); setAiEnabled(false); setMsg({ ok: true, text: 'API-Key gelöscht.' }); }
-    catch (e) { setMsg({ ok: false, text: 'Fehler: ' + safe(e?.message) }); }
+    try { await invoke('deleteApiKey'); setKey(''); setAi(false); setMsg({ ok: true, t: 'API-Key gelöscht' }); }
+    catch (e) { setMsg({ ok: false, t: safe(e?.message) }); }
     setSaving(false);
   };
 
-  if (!loaded) return <div className="dq-loading"><div className="dq-loading-spinner" /><span>Lade Einstellungen...</span></div>;
+  if (!ready) return <div className="loading"><div className="loading-ring" /><span className="loading-text">Lade Einstellungen...</span></div>;
 
   return (
-    <div className="dq-app">
-      <div className="dq-header">
-        <h1>Einstellungen</h1>
-        <button className="dq-btn dq-btn-subtle" onClick={onClose}>Zurück zum Dashboard</button>
+    <div className="app">
+      <div className="header">
+        <button className="btn btn-secondary" onClick={onClose}><IconBack /> Zurück</button>
+        <span className="header-title">Einstellungen</span>
+        <div />
       </div>
 
-      <div className="dq-settings-card">
-        <h3 style={{ marginBottom: 4, fontSize: 16, fontWeight: 700 }}>KI-Analyse (optional)</h3>
-        <p style={{ fontSize: 13, color: 'var(--dq-text-subtle)', marginBottom: 16 }}>
-          Die App funktioniert ohne KI-Key (regelbasiert). Mit Key werden zusätzlich semantische Widersprüche erkannt.
-        </p>
-
-        <div className="dq-form-group">
-          <label className="dq-form-label">Claude API-Key</label>
-          <input className="dq-form-input" type="password" placeholder="sk-ant-..." value={apiKey} onChange={e => setApiKey(e.target.value)} />
-          <div className="dq-form-hint">Kostenlos erstellen auf console.anthropic.com</div>
+      <div className="settings-card">
+        <h3>KI-Analyse</h3>
+        <p className="subtitle">Ohne Key: regelbasierte Analyse. Mit Key: zusätzlich semantische Widerspruchserkennung.</p>
+        <div className="form-group">
+          <label className="form-label" htmlFor="apikey">Claude API-Key</label>
+          <input id="apikey" className="form-input" type="password" placeholder="sk-ant-..." value={key} onChange={e => setKey(e.target.value)} />
+          <div className="form-hint">Erstellen auf console.anthropic.com</div>
         </div>
-
-        <div className="dq-toggle-row" style={{ marginBottom: 16 }}>
-          <label className="dq-toggle">
-            <input type="checkbox" checked={aiEnabled} onChange={() => setAiEnabled(!aiEnabled)} />
-            <span className="dq-toggle-track" />
-          </label>
-          <span style={{ fontSize: 14 }}>{aiEnabled ? 'KI-Analyse aktiviert' : 'KI-Analyse deaktiviert'}</span>
+        <div className="toggle-row" style={{ marginBottom: 20 }}>
+          <label className="toggle"><input type="checkbox" checked={ai} onChange={() => setAi(!ai)} /><span className="toggle-track" /></label>
+          <span className="toggle-label">{ai ? 'KI aktiv' : 'KI deaktiviert'}</span>
         </div>
-
-        {!aiEnabled && (
-          <div className="dq-info-box" style={{ marginBottom: 16 }}>
-            <strong>Ohne KI:</strong> Fehlende Felder, Staleness, Workflow-Anomalien.
-            <br /><strong>Mit KI:</strong> Zusätzlich semantische Widerspruchserkennung Jira ↔ Confluence.
-          </div>
-        )}
-
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="dq-btn dq-btn-primary" onClick={handleSave} disabled={saving}>
-            {saving ? <><span className="spinner" /> Speichert...</> : 'Speichern'}
-          </button>
-          {apiKey && <button className="dq-btn dq-btn-danger" onClick={handleDelete} disabled={saving}>API-Key löschen</button>}
+          <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? <><span className="spinner" /> Speichert</> : 'Speichern'}</button>
+          {key && <button className="btn btn-danger" onClick={del} disabled={saving}>Key löschen</button>}
         </div>
       </div>
 
-      {msg && <div className={msg.ok ? 'dq-success-box' : 'dq-info-box'} style={{ borderColor: msg.ok ? '#abf5d1' : '#ffd1cc', background: msg.ok ? '#e3fcef' : '#ffebe6', color: msg.ok ? '#006644' : '#de350b' }}>{msg.text}</div>}
+      {msg && <div className={`info-box ${msg.ok ? 'info-box-green' : 'info-box-red'}`}>{msg.t}</div>}
 
-      <div className="dq-settings-card" style={{ marginTop: 16 }}>
-        <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>So funktioniert die App</h4>
-        <ol style={{ paddingLeft: 20, fontSize: 13, color: 'var(--dq-text-subtle)', lineHeight: 1.8 }}>
-          <li>Scannt automatisch alle Jira-Tickets und Confluence-Seiten</li>
-          <li>Regelbasiert: Fehlende Beschreibungen, Zuständige, veraltete Tickets</li>
-          <li>Cross-Referenz: Prüft Confluence-Verweise auf existierende Tickets</li>
-          <li>Mit KI: Erkennt inhaltliche Widersprüche zwischen Doku und Tickets</li>
-          <li>Ergebnis: Qualitätsnote (A–F) mit konkreten Empfehlungen</li>
+      <div className="settings-card">
+        <h3 style={{ fontSize: 14 }}>So funktioniert Data Quality Guard</h3>
+        <ol style={{ paddingLeft: 18, fontSize: 13, color: 'var(--c-text-secondary)', lineHeight: 2, marginTop: 8 }}>
+          <li>Scannt Jira-Tickets und Confluence-Seiten automatisch</li>
+          <li>Prüft Vollständigkeit, Aktualität und Konsistenz</li>
+          <li>Erkennt Widersprüche zwischen Dokumentation und Tickets</li>
+          <li>Berechnet Qualitätsnote (A–F) mit konkreten Empfehlungen</li>
         </ol>
       </div>
     </div>
@@ -182,50 +161,27 @@ function SettingsPanel({ onClose }) {
 }
 
 // === MAIN DASHBOARD ===
-function ProjectDashboard() {
+function Dashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [page, setPage] = useState(0);
-  const perPage = 15;
+  const [settings, setSettings] = useState(false);
+  const [pg, setPg] = useState(0);
+  const pp = 15;
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { load(); }, []);
+  const load = async () => { setLoading(true); setError(null); try { setData(await invoke('getProjectScore')); } catch (e) { setError(safe(e?.message || 'Fehler')); } setLoading(false); };
+  const scan = async () => { setScanning(true); try { await invoke('runScan'); await load(); } catch (e) { setError(safe(e?.message)); } setScanning(false); };
 
-  const loadData = async () => {
-    setLoading(true); setError(null);
-    try { setData(await invoke('getProjectScore')); }
-    catch (e) { setError(safe(e?.message || 'Fehler beim Laden')); }
-    setLoading(false);
-  };
+  if (settings) return <Settings onClose={() => { setSettings(false); load(); }} />;
+  if (loading) return <div className="loading"><div className="loading-ring" /><span className="loading-text">Lade Dashboard...</span></div>;
+  if (error) return <div className="app"><div className="info-box info-box-red">{error}</div><button className="btn btn-primary" onClick={load} style={{ marginTop: 12 }}>Erneut laden</button></div>;
 
-  const triggerScan = async () => {
-    setScanning(true);
-    try { await invoke('runScan'); await loadData(); }
-    catch (e) { setError(safe(e?.message)); }
-    setScanning(false);
-  };
-
-  if (showSettings) return <SettingsPanel onClose={() => { setShowSettings(false); loadData(); }} />;
-
-  if (loading) return <div className="dq-loading"><div className="dq-loading-spinner" /><span>Lade Dashboard...</span></div>;
-
-  if (error) return (
-    <div className="dq-app">
-      <div className="dq-info-box" style={{ background: '#ffebe6', borderColor: '#ffd1cc', color: '#de350b' }}>Fehler: {error}</div>
-      <button className="dq-btn dq-btn-primary" onClick={loadData} style={{ marginTop: 12 }}>Erneut laden</button>
-    </div>
-  );
-
-  if (!data || !data.score) return (
-    <div className="dq-app">
-      <div className="dq-header"><h1>Data Quality Guard</h1>
-        <button className="dq-btn dq-btn-primary" onClick={triggerScan} disabled={scanning}>
-          {scanning ? <><span className="spinner" /> Scannt...</> : 'Ersten Scan starten'}
-        </button>
-      </div>
-      <div className="dq-info-box">Noch keine Daten vorhanden. Starte den ersten Scan um die Qualität deines Projekts zu analysieren.</div>
+  if (!data?.score) return (
+    <div className="app">
+      <div className="header"><span className="header-title">Data Quality Guard</span><button className="btn btn-primary" onClick={scan} disabled={scanning}>{scanning ? <><span className="spinner" /> Scannt...</> : <><IconScan /> Ersten Scan starten</>}</button></div>
+      <div className="empty"><div className="empty-title">Noch keine Daten</div><div className="empty-desc">Starte den ersten Scan um die Qualität deines Projekts zu analysieren.</div></div>
     </div>
   );
 
@@ -233,263 +189,190 @@ function ProjectDashboard() {
   const grade = getGrade(score);
   const findings = data.findings || [];
   const history = data.history || [];
-  const contradictions = data.contradictions || [];
+  const contras = data.contradictions || [];
   const items = safeNum(data.score.total_issues);
-  const findCount = safeNum(data.score.findings_count);
-  const calculatedAt = data.score.calculated_at;
+  const fc = safeNum(data.score.findings_count);
 
   const cats = [
-    { name: 'Aktualität', score: safeNum(data.score.staleness_score), desc: 'Wie aktuell sind eure Tickets?' },
-    { name: 'Vollständigkeit', score: safeNum(data.score.completeness_score), desc: 'Sind alle Pflichtfelder ausgefüllt?' },
-    { name: 'Konsistenz', score: safeNum(data.score.consistency_score), desc: 'Stimmen Jira und Confluence überein?' },
-    { name: 'Querverweise', score: safeNum(data.score.cross_ref_score), desc: 'Funktionieren alle Verlinkungen?' },
+    { n: 'Aktualität', s: safeNum(data.score.staleness_score), d: 'Wie aktuell sind die Tickets?' },
+    { n: 'Vollständigkeit', s: safeNum(data.score.completeness_score), d: 'Alle Pflichtfelder ausgefüllt?' },
+    { n: 'Konsistenz', s: safeNum(data.score.consistency_score), d: 'Jira ↔ Confluence stimmig?' },
+    { n: 'Querverweise', s: safeNum(data.score.cross_ref_score), d: 'Verlinkungen intakt?' },
   ];
 
-  // Severity counts
-  const sevCounts = { critical: 0, high: 0, medium: 0, low: 0 };
-  findings.forEach(f => { const s = safe(f.severity); if (sevCounts[s] !== undefined) sevCounts[s]++; else sevCounts.low++; });
+  const sc = { critical: 0, high: 0, medium: 0, low: 0 };
+  findings.forEach(f => { const k = safe(f.severity); if (sc[k] !== undefined) sc[k]++; else sc.low++; });
 
-  // Pagination
-  const totalPages = Math.ceil(findings.length / perPage);
-  const pagedFindings = findings.slice(page * perPage, (page + 1) * perPage);
+  const totalPg = Math.ceil(findings.length / pp);
+  const paged = findings.slice(pg * pp, (pg + 1) * pp);
 
   return (
-    <div className="dq-app">
-      {/* HEADER */}
-      <div className="dq-header">
-        <h1>Data Quality Guard</h1>
-        <div className="dq-header-actions">
-          <button className="dq-btn dq-btn-subtle" onClick={() => setShowSettings(true)}>Einstellungen</button>
-          <button className="dq-btn dq-btn-primary" onClick={triggerScan} disabled={scanning}>
-            {scanning ? <><span className="spinner" /> Scannt...</> : 'Erneut scannen'}
-          </button>
+    <div className="app">
+      {/* Header */}
+      <div className="header">
+        <span className="header-title">Data Quality Guard</span>
+        <div className="header-actions">
+          <button className="btn btn-secondary" onClick={() => setSettings(true)}><IconSettings /> Einstellungen</button>
+          <button className="btn btn-primary" onClick={scan} disabled={scanning}>{scanning ? <><span className="spinner" /> Scannt...</> : <><IconScan /> Scannen</>}</button>
         </div>
       </div>
 
-      {/* SCORE HERO */}
-      <div className="dq-score-hero">
-        <div className="dq-score-circle">
-          <span className="dq-score-number">{score}</span>
-          <span className="dq-score-label">Score</span>
-        </div>
-        <div className="dq-score-info">
-          <h2>Note: {grade.grade} — {grade.label}</h2>
-          <p>{findCount} Probleme in {items} Tickets gefunden</p>
-          <div className="dq-score-meta">
-            <span className="dq-score-meta-item">Letzter Scan: {formatDate(calculatedAt)}</span>
-            {data.aiStatus?.configured && <span className="dq-score-meta-item">KI aktiv</span>}
+      {/* Score Hero */}
+      <div className="score-hero">
+        <ScoreRing score={score} />
+        <div className="score-details">
+          <h2>Note {grade.g} — {grade.l}</h2>
+          <p>{fc} Probleme in {items} Tickets</p>
+          <div className="score-meta">
+            <span className="score-meta-item">{fmtDate(data.score.calculated_at)}</span>
+            {data.aiStatus?.configured && <span className="score-meta-item" style={{ color: 'var(--c-accent)' }}>KI aktiv</span>}
           </div>
         </div>
       </div>
 
-      {/* CATEGORIES */}
-      <div className="dq-categories">
+      {/* Categories */}
+      <div className="categories">
         {cats.map(c => {
-          const catGrade = getGrade(c.score);
-          const rounded = Math.round(c.score);
+          const cg = getGrade(c.s);
+          const r = Math.round(c.s);
           return (
-            <div className="dq-cat-card" key={c.name}>
-              <div className="dq-cat-header">
-                <span className="dq-cat-name">{c.name}</span>
-                <span className="dq-cat-score" style={{ color: getBarColor(c.score) }}>{rounded}</span>
+            <div className="cat-card" key={c.n}>
+              <div className="cat-top">
+                <span className="cat-label">{c.n}</span>
+                <span className={`grade ${cg.c}`}>{cg.g}</span>
               </div>
-              <span className={`dq-grade ${catGrade.cls}`} style={{ fontSize: 12, width: 22, height: 22 }}>{catGrade.grade}</span>
-              <div className="dq-cat-bar">
-                <div className="dq-cat-bar-fill" style={{ width: `${rounded}%`, background: getBarColor(c.score) }} />
-              </div>
-              <div className="dq-cat-desc">{c.desc}</div>
+              <span className="cat-value" style={{ color: cg.color }}>{r}</span>
+              <div className="cat-bar"><div className="cat-bar-fill" style={{ width: `${r}%`, background: cg.color }} /></div>
+              <div className="cat-desc">{c.d}</div>
             </div>
           );
         })}
       </div>
 
-      {/* TREND */}
+      {/* Trend */}
       {history.length > 1 && (
-        <div className="dq-section">
-          <div className="dq-section-header">
-            <span className="dq-section-title">Trend-Verlauf</span>
-          </div>
-          <div className="dq-trend-row">
+        <div className="section">
+          <div className="section-head"><span className="section-title">Trend</span></div>
+          <div className="trend-row">
             {history.slice(0, 14).reverse().map((h, i) => {
-              const hScore = Math.round(safeNum(h.overall_score));
-              const hGrade = getGrade(hScore);
-              return (
-                <div className="dq-trend-bar" key={i}>
-                  <span className="dq-trend-value" style={{ background: getBarColor(hScore) + '20', color: getBarColor(hScore) }}>{hScore}</span>
-                  <span className="dq-trend-date">{formatDateShort(h.calculated_at)}</span>
-                </div>
-              );
+              const hs = Math.round(safeNum(h.overall_score));
+              const hg = getGrade(hs);
+              return <div className="trend-item" key={i}><span className="trend-val" style={{ background: hg.color + '15', color: hg.color }}>{hs}</span><span className="trend-date">{fmtShort(h.calculated_at)}</span></div>;
             })}
           </div>
         </div>
       )}
 
-      {/* CONTRADICTIONS */}
-      {contradictions.length > 0 && (
-        <div className="dq-section">
-          <div className="dq-section-header">
-            <span className="dq-section-title">Widersprüche</span>
-            <span className="dq-section-count">{contradictions.length}</span>
-          </div>
-          {contradictions.map((c, i) => (
-            <div className="dq-contradiction" key={i}>
-              <div className="dq-contradiction-header">
-                <span className="dq-contradiction-badge">Widerspruch</span>
-                <strong>{safe(c.source_key)} ↔ {safe(c.target_key)}</strong>
-                {safeNum(c.confidence) > 0 && <span className="dq-contradiction-confidence">{Math.round(safeNum(c.confidence) * 100)}% Konfidenz</span>}
+      {/* Contradictions */}
+      {contras.length > 0 && (
+        <div className="section">
+          <div className="section-head"><span className="section-title">Widersprüche</span><span className="section-count">{contras.length}</span></div>
+          {contras.map((c, i) => (
+            <div className="contra" key={i}>
+              <div className="contra-head">
+                <span className="contra-badge">Widerspruch</span>
+                <span className="contra-keys">{safe(c.source_key)} ↔ {safe(c.target_key)}</span>
+                {safeNum(c.confidence) > 0 && <span className="contra-conf">{Math.round(safeNum(c.confidence) * 100)}%</span>}
               </div>
-              <div className="dq-contradiction-desc">{safe(c.description)}</div>
-              {safe(c.page_title) && <div style={{ fontSize: 12, color: 'var(--dq-text-muted)' }}>Seite: {safe(c.page_title)}</div>}
-              {safe(c.recommendation) && <div className="dq-contradiction-rec">Empfehlung: {safe(c.recommendation)}</div>}
+              <div className="contra-desc">{safe(c.description)}</div>
+              {safe(c.page_title) && <div className="contra-page">Seite: {safe(c.page_title)}</div>}
+              {safe(c.recommendation) && <div className="contra-rec">{safe(c.recommendation)}</div>}
             </div>
           ))}
         </div>
       )}
 
-      {/* FINDINGS */}
+      {/* Findings */}
       {findings.length > 0 ? (
-        <div className="dq-section">
-          <div className="dq-section-header">
-            <span className="dq-section-title">Gefundene Probleme</span>
-            <span className="dq-section-count">{findCount}</span>
+        <div className="section">
+          <div className="section-head"><span className="section-title">Probleme</span><span className="section-count">{fc}</span></div>
+          <div className="sev-row">
+            {sc.critical > 0 && <span className="sev sev-critical">{sc.critical} Kritisch</span>}
+            {sc.high > 0 && <span className="sev sev-high">{sc.high} Hoch</span>}
+            {sc.medium > 0 && <span className="sev sev-medium">{sc.medium} Mittel</span>}
+            {sc.low > 0 && <span className="sev sev-low">{sc.low} Niedrig</span>}
           </div>
-
-          <div className="dq-severity-bar">
-            {sevCounts.critical > 0 && <span className="dq-sev-badge dq-sev-critical">{sevCounts.critical} Kritisch</span>}
-            {sevCounts.high > 0 && <span className="dq-sev-badge dq-sev-high">{sevCounts.high} Hoch</span>}
-            {sevCounts.medium > 0 && <span className="dq-sev-badge dq-sev-medium">{sevCounts.medium} Mittel</span>}
-            {sevCounts.low > 0 && <span className="dq-sev-badge dq-sev-low">{sevCounts.low} Niedrig</span>}
-          </div>
-
-          <table className="dq-table">
-            <thead>
-              <tr>
-                <th style={{ width: 80 }}>Schwere</th>
-                <th style={{ width: 90 }}>Ticket</th>
-                <th>Problem</th>
-                <th style={{ width: 220 }}>Empfehlung</th>
-              </tr>
-            </thead>
+          <table className="tbl">
+            <thead><tr><th style={{ width: 76 }}>Schwere</th><th style={{ width: 80 }}>Ticket</th><th>Problem</th><th style={{ width: 190 }}>Empfehlung</th></tr></thead>
             <tbody>
-              {pagedFindings.map((f, i) => (
+              {paged.map((f, i) => (
                 <tr key={i}>
-                  <td><span className={`dq-sev-badge ${getSevCls(f.severity)}`}>{getSevLabel(f.severity)}</span></td>
-                  <td><a className="dq-ticket-link" href="#" onClick={e => { e.preventDefault(); router.navigate(`/browse/${safe(f.item_key)}`); }}>{safe(f.item_key)}</a></td>
-                  <td className="dq-message">{safe(f.message) || getCheckLabel(f.check_type)}</td>
-                  <td className="dq-rec">{getRecommendation(f)}</td>
+                  <td><span className={`sev ${sevCls(f.severity)}`}>{sevLabel(f.severity)}</span></td>
+                  <td><a className="tbl-link" href="#" onClick={e => { e.preventDefault(); router.navigate(`/browse/${safe(f.item_key)}`); }}>{safe(f.item_key)}</a></td>
+                  <td className="tbl-msg">{safe(f.message) || safe(f.check_type)}</td>
+                  <td className="tbl-rec">{recommend(f)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-
-          {totalPages > 1 && (
-            <div className="dq-pagination">
-              {Array.from({ length: totalPages }, (_, i) => (
-                <button key={i} className={`dq-page-btn ${i === page ? 'active' : ''}`} onClick={() => setPage(i)}>{i + 1}</button>
-              ))}
-            </div>
-          )}
+          {totalPg > 1 && <div className="pages">{Array.from({ length: totalPg }, (_, i) => <button key={i} className={`page-btn ${i === pg ? 'active' : ''}`} onClick={() => setPg(i)}>{i + 1}</button>)}</div>}
         </div>
       ) : (
-        <div className="dq-success-box" style={{ textAlign: 'center' }}>
-          <strong>Alles in Ordnung!</strong> Keine Probleme gefunden.
-        </div>
+        <div className="info-box info-box-green" style={{ justifyContent: 'center' }}>Keine Probleme gefunden.</div>
       )}
 
-      {/* KI STATUS */}
+      {/* AI hint */}
       {!data.aiStatus?.configured && (
-        <div className="dq-info-box" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>Tipp: API-Key hinterlegen für KI-gestützte Widerspruchserkennung</span>
-          <button className="dq-btn dq-btn-subtle" onClick={() => setShowSettings(true)} style={{ borderColor: '#b3d4ff' }}>Jetzt einrichten</button>
+        <div className="info-box info-box-blue">
+          <span>KI-Widerspruchserkennung verfügbar</span>
+          <button className="btn btn-secondary" onClick={() => setSettings(true)} style={{ flexShrink: 0 }}>Einrichten</button>
         </div>
       )}
 
-      {/* FOOTER */}
-      <div className="dq-footer">
-        <span>Letzter Scan: {formatDate(calculatedAt)}</span>
-        <span>{items} Tickets gescannt</span>
-      </div>
+      <div className="footer"><span>Scan: {fmtDate(data.score.calculated_at)}</span><span>{items} Tickets</span></div>
     </div>
   );
 }
 
-// === ISSUE PANEL (compact) ===
+// === ISSUE PANEL ===
 function IssuePanel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => { invoke('getIssueQuality').then(setData).catch(console.error).finally(() => setLoading(false)); }, []);
-
-  if (loading) return <div className="dq-loading"><div className="dq-loading-spinner" /><span>Prüfe...</span></div>;
-  if (!data?.findings?.length) return <div style={{ padding: 8 }}><span className="dq-sev-badge" style={{ background: '#e3fcef', color: '#00875a' }}>Keine Probleme</span></div>;
-
-  const issueScore = Math.round(safeNum(data.score));
-  const issueGrade = getGrade(issueScore);
-
+  if (loading) return <div className="loading" style={{ padding: 20 }}><div className="loading-ring" /></div>;
+  if (!data?.findings?.length) return <div style={{ padding: 10 }}><span className="sev" style={{ background: 'var(--c-green-subtle)', color: 'var(--c-green)' }}>Keine Probleme</span></div>;
+  const s = Math.round(safeNum(data.score)), g = getGrade(s);
   return (
-    <div style={{ padding: 8 }}>
+    <div style={{ padding: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span className={`dq-grade ${issueGrade.cls}`}>{issueGrade.grade}</span>
-        <span style={{ fontWeight: 700 }}>{issueScore}/100</span>
-        <span style={{ fontSize: 12, color: 'var(--dq-text-subtle)' }}>{data.findings.length} Probleme</span>
+        <span className={`grade ${g.c}`}>{g.g}</span>
+        <span style={{ fontWeight: 650, fontSize: 14 }}>{s}/100</span>
+        <span style={{ fontSize: 12, color: 'var(--c-text-tertiary)' }}>{data.findings.length} Probleme</span>
       </div>
       {data.findings.slice(0, 3).map((f, i) => (
         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-          <span className={`dq-sev-badge ${getSevCls(f.severity)}`} style={{ fontSize: 11 }}>{getSevLabel(f.severity)}</span>
-          <span style={{ fontSize: 12 }}>{safe(f.message) || getCheckLabel(f.check_type)}</span>
+          <span className={`sev ${sevCls(f.severity)}`} style={{ fontSize: 10 }}>{sevLabel(f.severity)}</span>
+          <span style={{ fontSize: 12 }}>{safe(f.message) || safe(f.check_type)}</span>
         </div>
       ))}
-      {data.findings.length > 3 && <div style={{ fontSize: 11, color: 'var(--dq-text-muted)', marginTop: 4 }}>+{data.findings.length - 3} weitere</div>}
+      {data.findings.length > 3 && <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)', marginTop: 4 }}>+{data.findings.length - 3} weitere</div>}
     </div>
   );
 }
 
-// === CONFLUENCE DASHBOARD ===
-function ConfluenceDashboard() {
+// === CONFLUENCE ===
+function Confluence() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => { invoke('getDashboardData').then(setData).catch(console.error).finally(() => setLoading(false)); }, []);
-
-  if (loading) return <div className="dq-loading"><div className="dq-loading-spinner" /><span>Lade Übersicht...</span></div>;
-
+  if (loading) return <div className="loading"><div className="loading-ring" /><span className="loading-text">Lade Übersicht...</span></div>;
   const scores = data?.scores || [];
-  if (!scores.length) return (
-    <div className="dq-app">
-      <h1 style={{ marginBottom: 16 }}>Data Quality Guard — Alle Projekte</h1>
-      <div className="dq-info-box">Noch keine Daten. Scans laufen automatisch stündlich.</div>
-    </div>
-  );
-
-  const avg = Math.round(scores.reduce((sum, s) => sum + safeNum(s.overall_score), 0) / scores.length);
-  const avgGrade = getGrade(avg);
-
+  if (!scores.length) return <div className="app"><div className="header"><span className="header-title">Data Quality Guard</span></div><div className="empty"><div className="empty-title">Keine Daten</div><div className="empty-desc">Scans laufen automatisch stündlich.</div></div></div>;
+  const avg = Math.round(scores.reduce((a, s) => a + safeNum(s.overall_score), 0) / scores.length);
+  const ag = getGrade(avg);
   return (
-    <div className="dq-app">
-      <h1 style={{ marginBottom: 16 }}>Data Quality Guard — Alle Projekte</h1>
-      <div className="dq-score-hero" style={{ marginBottom: 24 }}>
-        <div className="dq-score-circle"><span className="dq-score-number">{avg}</span><span className="dq-score-label">Schnitt</span></div>
-        <div className="dq-score-info">
-          <h2>Durchschnitt: {avgGrade.grade}</h2>
-          <p>{scores.length} Projekte, {scores.reduce((s, r) => s + safeNum(r.findings_count), 0)} Probleme insgesamt</p>
-        </div>
+    <div className="app">
+      <div className="header"><span className="header-title">Data Quality Guard — Übersicht</span></div>
+      <div className="score-hero">
+        <ScoreRing score={avg} />
+        <div className="score-details"><h2>Durchschnitt: {ag.g}</h2><p>{scores.length} Projekte, {scores.reduce((a, s) => a + safeNum(s.findings_count), 0)} Probleme</p></div>
       </div>
-      <table className="dq-table">
-        <thead><tr><th>Projekt</th><th>Note</th><th>Aktualität</th><th>Vollständigkeit</th><th>Konsistenz</th><th>Querverweise</th><th>Probleme</th></tr></thead>
+      <table className="tbl">
+        <thead><tr><th>Projekt</th><th>Note</th><th>Aktualität</th><th>Vollständigkeit</th><th>Konsistenz</th><th>Probleme</th></tr></thead>
         <tbody>
-          {scores.map((s, i) => {
-            const sScore = Math.round(safeNum(s.overall_score));
-            const sGrade = getGrade(sScore);
-            return (
-              <tr key={i}>
-                <td><strong>{safe(s.project_key)}</strong></td>
-                <td><span className={`dq-grade ${sGrade.cls}`} style={{ fontSize: 12, width: 22, height: 22 }}>{sGrade.grade}</span> {sScore}</td>
-                <td>{Math.round(safeNum(s.staleness_score))}</td>
-                <td>{Math.round(safeNum(s.completeness_score))}</td>
-                <td>{Math.round(safeNum(s.consistency_score))}</td>
-                <td>{Math.round(safeNum(s.cross_ref_score))}</td>
-                <td><span className="dq-sev-badge dq-sev-critical">{safeNum(s.findings_count)}</span></td>
-              </tr>
-            );
-          })}
+          {scores.map((s, i) => { const ss = Math.round(safeNum(s.overall_score)), sg = getGrade(ss); return (
+            <tr key={i}><td style={{ fontWeight: 650 }}>{safe(s.project_key)}</td><td><span className={`grade ${sg.c}`}>{sg.g}</span> {ss}</td><td>{Math.round(safeNum(s.staleness_score))}</td><td>{Math.round(safeNum(s.completeness_score))}</td><td>{Math.round(safeNum(s.consistency_score))}</td><td><span className="sev sev-critical">{safeNum(s.findings_count)}</span></td></tr>
+          ); })}
         </tbody>
       </table>
     </div>
@@ -500,11 +383,9 @@ function ConfluenceDashboard() {
 export default function App() {
   const [ctx, setCtx] = useState(null);
   useEffect(() => { view.getContext().then(setCtx).catch(console.error); }, []);
-
-  if (!ctx) return <div className="dq-loading"><div className="dq-loading-spinner" /><span>Laden...</span></div>;
-
+  if (!ctx) return <div className="loading"><div className="loading-ring" /><span className="loading-text">Laden...</span></div>;
   const mk = safe(ctx.moduleKey);
   if (mk.includes('issue-panel')) return <IssuePanel />;
-  if (mk.includes('confluence')) return <ConfluenceDashboard />;
-  return <ProjectDashboard />;
+  if (mk.includes('confluence')) return <Confluence />;
+  return <Dashboard />;
 }
