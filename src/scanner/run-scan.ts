@@ -26,6 +26,7 @@ async function isAIEnabled(): Promise<boolean> {
 }
 
 export async function runProjectScan(projectKey: string): Promise<ProjectScore> {
+  const scanStart = Date.now();
   const aiEnabled = await isAIEnabled();
   console.log(`[Scan] AI mode: ${aiEnabled ? 'ENABLED' : 'DISABLED'}`);
   console.log(`[Scan] Starting scan for ${projectKey}`);
@@ -123,5 +124,12 @@ export async function runProjectScan(projectKey: string): Promise<ProjectScore> 
   }
 
   console.log(`[Scan] ${projectKey}: Score = ${score.overallScore}/100 (${allFindings.length} findings)`);
+
+  const scanDuration = Date.now() - scanStart;
+  console.log(`[Scan] ${projectKey}: Completed in ${scanDuration}ms (${issues.length} issues, ${allPages.length} pages, ${allFindings.length} findings)`);
+  if (scanDuration > 60000) {
+    console.warn(`[Scan] WARNING: Scan took ${Math.round(scanDuration / 1000)}s — may timeout on larger projects`);
+  }
+
   return score;
 }

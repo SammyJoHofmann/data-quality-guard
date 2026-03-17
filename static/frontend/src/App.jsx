@@ -93,6 +93,7 @@ function Settings({ onClose }) {
   const [key, setKey] = useState('');
   const [provider, setProvider] = useState('gemini');
   const [ai, setAi] = useState(false);
+  const [thresholds, setThresholds] = useState({ staleWarningDays: 30, staleCriticalDays: 90, inProgressWarningDays: 14, inProgressCriticalDays: 60 });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
   const [ready, setReady] = useState(false);
@@ -106,13 +107,14 @@ function Settings({ onClose }) {
       }
       setReady(true);
     }).catch(() => setReady(true));
+    invoke('getThresholds').then(t => { if (t) setThresholds(t); }).catch(() => {});
   }, []);
 
   const providerPlaceholder = provider === 'gemini' ? 'AIza...' : provider === 'claude' ? 'sk-ant-...' : 'sk-...';
 
   const save = async () => {
     setSaving(true); setMsg(null);
-    try { await invoke('saveSettings', { apiKey: key, provider, aiEnabled: ai }); setMsg({ ok: true, t: 'Gespeichert' }); }
+    try { await invoke('saveSettings', { apiKey: key, provider, aiEnabled: ai }); await invoke('saveThresholds', thresholds); setMsg({ ok: true, t: 'Gespeichert' }); }
     catch (e) { setMsg({ ok: false, t: safe(e?.message) }); }
     setSaving(false);
   };
@@ -178,6 +180,33 @@ function Settings({ onClose }) {
         </div>
       </div>
 
+      <div className="settings-card">
+        <h3>Schwellenwerte</h3>
+        <p className="subtitle">Ab wann soll die App Tickets als veraltet oder blockiert markieren?</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="form-group">
+            <label className="form-label">Veraltet-Warnung (Tage)</label>
+            <input className="form-input" type="number" min="1" max="365" value={thresholds.staleWarningDays} onChange={e => setThresholds({...thresholds, staleWarningDays: Number(e.target.value)})} />
+            <div className="form-hint">Standard: 30 Tage</div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Veraltet-Kritisch (Tage)</label>
+            <input className="form-input" type="number" min="1" max="365" value={thresholds.staleCriticalDays} onChange={e => setThresholds({...thresholds, staleCriticalDays: Number(e.target.value)})} />
+            <div className="form-hint">Standard: 90 Tage</div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">In-Progress-Warnung (Tage)</label>
+            <input className="form-input" type="number" min="1" max="365" value={thresholds.inProgressWarningDays} onChange={e => setThresholds({...thresholds, inProgressWarningDays: Number(e.target.value)})} />
+            <div className="form-hint">Standard: 14 Tage</div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">In-Progress-Kritisch (Tage)</label>
+            <input className="form-input" type="number" min="1" max="365" value={thresholds.inProgressCriticalDays} onChange={e => setThresholds({...thresholds, inProgressCriticalDays: Number(e.target.value)})} />
+            <div className="form-hint">Standard: 60 Tage</div>
+          </div>
+        </div>
+      </div>
+
       {msg && <div className={`info-box ${msg.ok ? 'info-box-green' : 'info-box-red'}`}>{msg.t}</div>}
 
       <div className="settings-card">
@@ -214,7 +243,7 @@ function Dashboard() {
 
   if (!data?.score) return (
     <div className="app">
-      <div className="header"><span className="header-title">Data Quality Guard</span><button className="btn btn-primary" onClick={scan} disabled={scanning}>{scanning ? <><span className="spinner" /> Scannt...</> : <><IconScan /> Ersten Scan starten</>}</button></div>
+      <div className="header"><span className="header-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 8, verticalAlign: 'text-bottom'}}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10" stroke="var(--c-green)"/></svg>Data Quality Guard</span><button className="btn btn-primary" onClick={scan} disabled={scanning}>{scanning ? <><span className="spinner" /> Scannt...</> : <><IconScan /> Ersten Scan starten</>}</button></div>
       <div className="empty"><div className="empty-title">Noch keine Daten</div><div className="empty-desc">Starte den ersten Scan um die Qualität deines Projekts zu analysieren.</div></div>
     </div>
   );
@@ -248,7 +277,7 @@ function Dashboard() {
     <div className="app">
       {/* Header */}
       <div className="header">
-        <span className="header-title">Data Quality Guard</span>
+        <span className="header-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 8, verticalAlign: 'text-bottom'}}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10" stroke="var(--c-green)"/></svg>Data Quality Guard</span>
         <div className="header-actions">
           <button className="btn btn-secondary" onClick={() => setSettings(true)}><IconSettings /> Einstellungen</button>
           <button className="btn btn-primary" onClick={scan} disabled={scanning}>{scanning ? <><span className="spinner" /> Scannt...</> : <><IconScan /> Scannen</>}</button>
@@ -438,22 +467,52 @@ function Confluence() {
   useEffect(() => { invoke('getDashboardData').then(setData).catch(console.error).finally(() => setLoading(false)); }, []);
   if (loading) return <div className="loading"><div className="loading-ring" /><span className="loading-text">Lade Übersicht...</span></div>;
   const scores = data?.scores || [];
-  if (!scores.length) return <div className="app"><div className="header"><span className="header-title">Data Quality Guard</span></div><div className="empty"><div className="empty-title">Keine Daten</div><div className="empty-desc">Scans laufen automatisch stündlich.</div></div></div>;
+  if (!scores.length) return (
+    <div className="app">
+      <div className="header"><span className="header-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 8, verticalAlign: 'text-bottom'}}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10" stroke="var(--c-green)"/></svg>Data Quality Guard</span></div>
+      <div className="empty">
+        <div className="empty-title">Keine Daten</div>
+        <div className="empty-desc">Scans laufen automatisch stündlich.</div>
+        <div style={{ marginTop: 16, padding: '12px 20px', background: 'var(--c-accent-subtle)', borderRadius: 'var(--radius)', fontSize: 13, color: 'var(--c-accent)' }}>
+          Tipp: Öffne ein Projekt-Dashboard und klicke auf &bdquo;Scannen&ldquo;, um den ersten Scan zu starten.
+        </div>
+      </div>
+    </div>
+  );
   const avg = Math.round(scores.reduce((a, s) => a + safeNum(s.overall_score), 0) / scores.length);
   const ag = getGrade(avg);
+  const totalFindings = scores.reduce((a, s) => a + safeNum(s.findings_count), 0);
   return (
     <div className="app">
-      <div className="header"><span className="header-title">Data Quality Guard — Übersicht</span></div>
+      <div className="header"><span className="header-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 8, verticalAlign: 'text-bottom'}}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10" stroke="var(--c-green)"/></svg>Data Quality Guard — Übersicht</span></div>
       <div className="score-hero">
         <ScoreRing score={avg} />
-        <div className="score-details"><h2>Durchschnitt: {ag.g}</h2><p>{scores.length} Projekte, {scores.reduce((a, s) => a + safeNum(s.findings_count), 0)} Probleme</p></div>
+        <div className="score-details">
+          <h2>Durchschnitt: Note {ag.g} — {ag.l}</h2>
+          <p>{scores.length} Projekte, {totalFindings} Probleme</p>
+        </div>
       </div>
       <table className="tbl">
         <thead><tr><th>Projekt</th><th>Note</th><th>Aktualität</th><th>Vollständigkeit</th><th>Konsistenz</th><th>Probleme</th></tr></thead>
         <tbody>
-          {scores.map((s, i) => { const ss = Math.round(safeNum(s.overall_score)), sg = getGrade(ss); return (
-            <tr key={i}><td style={{ fontWeight: 650 }}>{safe(s.project_key)}</td><td><span className={`grade ${sg.c}`}>{sg.g}</span> {ss}</td><td>{Math.round(safeNum(s.staleness_score))}</td><td>{Math.round(safeNum(s.completeness_score))}</td><td>{Math.round(safeNum(s.consistency_score))}</td><td><span className="sev sev-critical">{safeNum(s.findings_count)}</span></td></tr>
-          ); })}
+          {scores.map((s, i) => {
+            const ss = Math.round(safeNum(s.overall_score)), sg = getGrade(ss);
+            const stalG = getGrade(safeNum(s.staleness_score));
+            const compG = getGrade(safeNum(s.completeness_score));
+            const consG = getGrade(safeNum(s.consistency_score));
+            return (
+              <tr key={i} style={{ cursor: 'pointer', transition: 'background 150ms ease' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--c-accent-subtle)'}
+                onMouseLeave={e => e.currentTarget.style.background = ''}>
+                <td style={{ fontWeight: 650 }}>{safe(s.project_key)}</td>
+                <td><span className={`grade ${sg.c}`}>{sg.g}</span> <span style={{ color: sg.color }}>{ss}</span></td>
+                <td style={{ color: stalG.color }}><span className={`grade ${stalG.c}`} style={{ fontSize: 10, marginRight: 4 }}>{stalG.g}</span>{Math.round(safeNum(s.staleness_score))}</td>
+                <td style={{ color: compG.color }}><span className={`grade ${compG.c}`} style={{ fontSize: 10, marginRight: 4 }}>{compG.g}</span>{Math.round(safeNum(s.completeness_score))}</td>
+                <td style={{ color: consG.color }}><span className={`grade ${consG.c}`} style={{ fontSize: 10, marginRight: 4 }}>{consG.g}</span>{Math.round(safeNum(s.consistency_score))}</td>
+                <td><span className="sev sev-critical">{safeNum(s.findings_count)}</span></td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
