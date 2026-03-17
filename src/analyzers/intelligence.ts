@@ -45,8 +45,24 @@ export async function runIntelligenceChecks(
         // Regelbasierter Widerspruchs-Hinweis (ohne KI)
         const isDone = issues.find(i => i.key === candidate.jiraKey)?.fields.status.statusCategory.key === 'done';
         if (isDone) {
+          const contradictionId = generateId('rule_contra');
+
+          // In contradictions-Tabelle speichern (damit Frontend sie anzeigen kann)
+          await saveContradiction({
+            id: contradictionId,
+            sourceType: 'jira_issue',
+            sourceKey: candidate.jiraKey,
+            targetType: 'confluence_page',
+            targetKey: candidate.pageId,
+            contradictionType: 'rule_based',
+            confidence: 0.6,
+            description: `Möglicher Widerspruch: Ticket ${candidate.jiraKey} (erledigt) beschreibt Änderungen die Seite "${candidate.pageTitle}" widersprechen könnten`,
+            recommendation: `Confluence-Seite "${candidate.pageTitle}" prüfen und aktualisieren`,
+            pageTitle: candidate.pageTitle,
+          });
+
           allFindings.push({
-            id: generateId('rule_contra'),
+            id: contradictionId,
             itemType: 'confluence_page',
             itemKey: candidate.pageId,
             projectKey,

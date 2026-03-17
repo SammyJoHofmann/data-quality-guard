@@ -68,11 +68,11 @@ resolver.define('getProjectScore', async ({ payload, context }: any) => {
   if (!projectKey) return { error: 'No project context' };
 
   const rawScore = await getLatestProjectScore(projectKey);
-  const rawFindings = await getProjectFindings(projectKey, 20);
+  const rawFindings = await getProjectFindings(projectKey, 100);
   const rawHistory = await getProjectScoreHistory(projectKey, 14);
 
   let contradictions: any[] = [];
-  try { contradictions = await getProjectContradictions(projectKey); } catch {}
+  try { contradictions = await getProjectContradictions(projectKey); } catch (err) { console.error('[Resolver] Contradictions query failed:', err); }
 
   const aiEnabled = await getConfig('ai_enabled', 'false');
   const hasApiKey = (await getConfig('anthropic_api_key', '')).length > 0;
@@ -91,6 +91,12 @@ resolver.define('getProjectScore', async ({ payload, context }: any) => {
       recommendation: String(c?.recommendation || ''),
       page_title: String(c?.page_title || ''),
     })),
+    severityCounts: {
+      critical: rawFindings.filter(f => f.severity === 'critical').length,
+      high: rawFindings.filter(f => f.severity === 'high').length,
+      medium: rawFindings.filter(f => f.severity === 'medium').length,
+      low: rawFindings.filter(f => f.severity === 'low').length,
+    },
     aiStatus: { enabled: aiEnabled === 'true', configured: hasApiKey },
   };
 });

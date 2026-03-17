@@ -129,14 +129,17 @@ export async function saveContradiction(c: {
   confidence: number;
   description: string;
   recommendation?: string;
+  page_title?: string;
+  pageTitle?: string;
 }): Promise<void> {
+  const title = c.page_title || c.pageTitle || null;
   await sql.prepare(`
     REPLACE INTO contradictions
-    (id, source_type, source_key, target_type, target_key, contradiction_type, confidence, description, recommendation, detected_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    (id, source_type, source_key, target_type, target_key, contradiction_type, confidence, description, recommendation, page_title, detected_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
   `).bindParams(
     c.id, c.sourceType, c.sourceKey, c.targetType, c.targetKey,
-    c.contradictionType, c.confidence, c.description, c.recommendation || null
+    c.contradictionType, c.confidence, c.description, c.recommendation || null, title
   ).execute();
 }
 

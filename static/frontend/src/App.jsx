@@ -172,7 +172,7 @@ function Dashboard() {
 
   useEffect(() => { load(); }, []);
   const load = async () => { setLoading(true); setError(null); try { setData(await invoke('getProjectScore')); } catch (e) { setError(safe(e?.message || 'Fehler')); } setLoading(false); };
-  const scan = async () => { setScanning(true); try { await invoke('runScan'); await load(); } catch (e) { setError(safe(e?.message)); } setScanning(false); };
+  const scan = async () => { setScanning(true); try { await invoke('triggerScan'); await load(); } catch (e) { setError(safe(e?.message)); } setScanning(false); };
 
   if (settings) return <Settings onClose={() => { setSettings(false); load(); }} />;
   if (loading) return <div className="loading"><div className="loading-ring" /><span className="loading-text">Lade Dashboard...</span></div>;
@@ -200,8 +200,11 @@ function Dashboard() {
     { n: 'Querverweise', s: safeNum(data.score.cross_ref_score), d: 'Verlinkungen intakt?' },
   ];
 
-  const sc = { critical: 0, high: 0, medium: 0, low: 0 };
-  findings.forEach(f => { const k = safe(f.severity); if (sc[k] !== undefined) sc[k]++; else sc.low++; });
+  const sc = data.severityCounts || (() => {
+    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+    findings.forEach(f => { const k = safe(f.severity); if (counts[k] !== undefined) counts[k]++; else counts.low++; });
+    return counts;
+  })();
 
   const totalPg = Math.ceil(findings.length / pp);
   const paged = findings.slice(pg * pp, (pg + 1) * pp);
@@ -282,6 +285,21 @@ function Dashboard() {
         </div>
       )}
 
+      {/* Top Actions */}
+      {findings.length > 0 && (
+        <div className="section" style={{ marginBottom: 16 }}>
+          <div className="section-head"><span className="section-title">Sofort handeln</span></div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {findings.filter(f => f.severity === 'critical' || f.severity === 'high').slice(0, 3).map((f, i) => (
+              <div key={i} style={{ flex: '1 1 250px', padding: 12, background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderLeft: `3px solid ${f.severity === 'critical' ? 'var(--c-red)' : 'var(--c-amber)'}`, borderRadius: 'var(--radius)' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: f.severity === 'critical' ? 'var(--c-red)' : 'var(--c-amber)', marginBottom: 4 }}>{safe(f.item_key).includes('-') ? safe(f.item_key) : 'Confluence'}</div>
+                <div style={{ fontSize: 13 }}>{recommend(f)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Findings */}
       {findings.length > 0 ? (
         <div className="section">
@@ -298,7 +316,13 @@ function Dashboard() {
               {paged.map((f, i) => (
                 <tr key={i}>
                   <td><span className={`sev ${sevCls(f.severity)}`}>{sevLabel(f.severity)}</span></td>
-                  <td><a className="tbl-link" href="#" onClick={e => { e.preventDefault(); router.navigate(`/browse/${safe(f.item_key)}`); }}>{safe(f.item_key)}</a></td>
+                  <td>
+                    {safe(f.item_key).includes('-') ? (
+                      <a className="tbl-link" href="#" onClick={e => { e.preventDefault(); router.navigate(`/browse/${safe(f.item_key)}`); }}>{safe(f.item_key)}</a>
+                    ) : (
+                      <span style={{ fontSize: 12, color: 'var(--c-text-tertiary)' }}>Seite</span>
+                    )}
+                  </td>
                   <td className="tbl-msg">{safe(f.message) || safe(f.check_type)}</td>
                   <td className="tbl-rec">{recommend(f)}</td>
                 </tr>
