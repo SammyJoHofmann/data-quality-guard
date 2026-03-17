@@ -90,7 +90,10 @@ export async function findSpacesByKey(projectKey: string): Promise<ConfluenceSpa
   if (exactMatch.length > 0) return exactMatch;
   // Fallback: spaces whose key contains the project key
   const partialMatch = allSpaces.filter(s => s.key.toUpperCase().includes(projectKey.toUpperCase()));
-  return partialMatch;
+  if (partialMatch.length > 0) return partialMatch;
+  // Final fallback: scan ALL spaces (cross-project quality check)
+  console.log(`[ConfluenceScanner] No space matches "${projectKey}" — scanning all ${allSpaces.length} spaces`);
+  return allSpaces;
 }
 
 export function extractJiraKeys(htmlContent: string): string[] {

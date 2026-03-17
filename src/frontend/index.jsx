@@ -9,7 +9,7 @@ import React, { useEffect, useState } from 'react';
 import ForgeReconciler, {
   Text, Heading, Box, Inline, Stack, Badge, Button,
   DynamicTable, SectionMessage, Lozenge, xcss,
-  ProgressBar, Link
+  ProgressBar, Link, Textfield, Toggle, Label
 } from '@forge/react';
 import { invoke, view } from '@forge/bridge';
 
@@ -253,6 +253,7 @@ function ProjectDashboard() {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
@@ -414,14 +415,24 @@ function ProjectDashboard() {
     ],
   }));
 
+  // Settings-Ansicht
+  if (showSettings) {
+    return <SettingsPanel onClose={() => { setShowSettings(false); loadData(); }} />;
+  }
+
   return (
     <Stack space="space.300">
       {/* 1. HEADER */}
       <Inline spread="space-between" alignBlock="center">
         <Heading size="large">{"Data Quality Guard"}</Heading>
-        <Button appearance="primary" onClick={triggerScan} isLoading={scanning}>
-          {scanning ? "Scannt..." : "Erneut scannen"}
-        </Button>
+        <Inline space="space.100">
+          <Button appearance="subtle" onClick={() => setShowSettings(true)}>
+            {"Einstellungen"}
+          </Button>
+          <Button appearance="primary" onClick={triggerScan} isLoading={scanning}>
+            {scanning ? "Scannt..." : "Erneut scannen"}
+          </Button>
+        </Inline>
       </Inline>
 
       {/* 2. GESAMT-SCORE CARD */}
@@ -542,12 +553,15 @@ function ProjectDashboard() {
 
       {/* 9. KI-STATUS-HINWEIS */}
       <Box xcss={cardStyle}>
-        <Inline space="space.200" alignBlock="center">
+        <Inline spread="space-between" alignBlock="center">
           <Text size="small" color="color.text.subtlest">
             {data.aiStatus?.configured
               ? "KI-Analyse aktiv — Widersprüche werden automatisch erkannt"
-              : "Tipp: Claude API-Key in den Einstellungen hinterlegen für KI-Widerspruchserkennung"}
+              : "Tipp: API-Key in den Einstellungen hinterlegen für KI-Widerspruchserkennung"}
           </Text>
+          <Button appearance="subtle" onClick={() => setShowSettings(true)}>
+            {data.aiStatus?.configured ? "KI-Einstellungen" : "Jetzt einrichten"}
+          </Button>
         </Inline>
       </Box>
     </Stack>
@@ -733,6 +747,145 @@ function ConfluenceDashboard() {
 
       {/* Tabelle */}
       <DynamicTable head={tableHead} rows={tableRows} rowsPerPage={15} />
+    </Stack>
+  );
+}
+
+// === SETTINGS PANEL ===
+
+function SettingsPanel({ onClose }) {
+  const [apiKey, setApiKey] = useState('');
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    invoke('getSettings')
+      .then((settings) => {
+        if (settings) {
+          setApiKey(safe(settings.apiKey) || '');
+          setAiEnabled(settings.aiEnabled === true || settings.aiEnabled === 'true');
+        }
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    setMessage(null);
+    try {
+      await invoke('saveSettings', {
+        apiKey: apiKey,
+        aiEnabled: aiEnabled
+      });
+      setMessage({ type: 'success', text: 'Einstellungen gespeichert!' });
+    } catch (e) {
+      setMessage({ type: 'error', text: 'Fehler beim Speichern: ' + safe(e?.message) });
+    }
+    setSaving(false);
+  }
+
+  async function handleDeleteKey() {
+    setSaving(true);
+    try {
+      await invoke('deleteApiKey');
+      setApiKey('');
+      setAiEnabled(false);
+      setMessage({ type: 'success', text: 'API-Key gelöscht.' });
+    } catch (e) {
+      setMessage({ type: 'error', text: 'Fehler: ' + safe(e?.message) });
+    }
+    setSaving(false);
+  }
+
+  if (!loaded) {
+    return (
+      <Stack space="space.100">
+        <ProgressBar ariaLabel="Lade Einstellungen" isIndeterminate />
+        <Text size="small">{"Lade Einstellungen..."}</Text>
+      </Stack>
+    );
+  }
+
+  return (
+    <Stack space="space.300">
+      <Inline spread="space-between" alignBlock="center">
+        <Heading size="large">{"Einstellungen"}</Heading>
+        <Button appearance="subtle" onClick={onClose}>{"Zurück zum Dashboard"}</Button>
+      </Inline>
+
+      {/* KI-Konfiguration */}
+      <Box xcss={cardStyle}>
+        <Stack space="space.200">
+          <Heading size="medium">{"KI-Analyse (optional)"}</Heading>
+          <Text size="small" color="color.text.subtlest">
+            {"Die App funktioniert ohne KI-Key (regelbasierte Analyse). Mit Key werden zusätzlich KI-gestützte Widersprüche zwischen Jira und Confluence erkannt."}
+          </Text>
+
+          <Stack space="space.100">
+            <Label labelFor="api-key-field">{"Claude API-Key"}</Label>
+            <Textfield
+              id="api-key-field"
+              name="apiKey"
+              type="password"
+              placeholder="sk-ant-..."
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+            <Text size="small" color="color.text.subtlest">
+              {"Kostenlos erstellen auf console.anthropic.com. Der Key wird verschlüsselt in der App-Datenbank gespeichert."}
+            </Text>
+          </Stack>
+
+          <Inline space="space.200" alignBlock="center">
+            <Toggle
+              id="ai-toggle"
+              isChecked={aiEnabled}
+              onChange={() => setAiEnabled(!aiEnabled)}
+            />
+            <Text>{aiEnabled ? "KI-Analyse aktiviert" : "KI-Analyse deaktiviert"}</Text>
+          </Inline>
+
+          {!aiEnabled ? (
+            <SectionMessage appearance="information">
+              <Text size="small">{"Ohne KI: Regelbasierte Prüfung (fehlende Felder, Staleness, Workflow-Anomalien). Mit KI: Zusätzlich semantische Widerspruchserkennung zwischen Jira-Tickets und Confluence-Seiten."}</Text>
+            </SectionMessage>
+          ) : null}
+        </Stack>
+      </Box>
+
+      {/* Aktionen */}
+      <Inline space="space.100">
+        <Button appearance="primary" onClick={handleSave} isLoading={saving}>
+          {"Speichern"}
+        </Button>
+        {apiKey ? (
+          <Button appearance="danger" onClick={handleDeleteKey} isLoading={saving}>
+            {"API-Key löschen"}
+          </Button>
+        ) : null}
+      </Inline>
+
+      {/* Feedback */}
+      {message ? (
+        <SectionMessage appearance={message.type === 'success' ? 'confirmation' : 'error'}>
+          <Text>{safe(message.text)}</Text>
+        </SectionMessage>
+      ) : null}
+
+      {/* Info-Box */}
+      <Box xcss={cardStyle}>
+        <Stack space="space.100">
+          <Heading size="small">{"So funktioniert die App"}</Heading>
+          <Text size="small">{"1. Die App scannt automatisch alle Jira-Tickets und Confluence-Seiten"}</Text>
+          <Text size="small">{"2. Regelbasiert: Fehlende Beschreibungen, keine Zuständigen, veraltete Tickets, Workflow-Probleme"}</Text>
+          <Text size="small">{"3. Cross-Referenz: Prüft ob Confluence-Seiten auf existierende Tickets verweisen"}</Text>
+          <Text size="small">{"4. Mit KI: Erkennt inhaltliche Widersprüche zwischen Dokumentation und Tickets"}</Text>
+          <Text size="small">{"5. Ergebnis: Qualitätsnote (A-F) mit konkreten Empfehlungen pro Problem"}</Text>
+        </Stack>
+      </Box>
     </Stack>
   );
 }
