@@ -6,20 +6,7 @@
 // ============================================================
 
 import sql from '@forge/sql';
-
-// Simple obfuscation for API keys (Forge SQL is already encrypted at rest)
-// Uses btoa/atob (available in Forge runtime) instead of Node.js Buffer
-function obfuscateKey(key: string): string {
-  if (!key || key.startsWith('OBF:')) return key;
-  return 'OBF:' + btoa(key.split('').reverse().join(''));
-}
-
-function deobfuscateKey(stored: string): string {
-  if (!stored || !stored.startsWith('OBF:')) return stored;
-  try {
-    return atob(stored.slice(4)).split('').reverse().join('');
-  } catch { return ''; }
-}
+import { storage } from '@forge/api';
 
 // === SCAN RESULTS ===
 
@@ -68,7 +55,7 @@ export async function getIssueFindings(itemKey: string): Promise<any[]> {
 
 export async function clearProjectResults(projectKey: string): Promise<void> {
   await sql.prepare(`
-    DELETE FROM scan_results WHERE project_key = ?
+    DELETE FROM scan_results WHERE project_key = ? AND (dismissed = FALSE OR dismissed IS NULL)
   `).bindParams(projectKey).execute();
 }
 
@@ -200,15 +187,23 @@ export async function setConfig(key: string, value: string): Promise<void> {
   `).bindParams(key, value).execute();
 }
 
-// === API KEY (obfuscated storage) ===
+// === API KEY (Forge Secret Storage — encrypted by Forge platform) ===
 
 export async function setApiKey(key: string): Promise<void> {
-  await setConfig('ai_api_key', obfuscateKey(key));
+  if (!key) {
+    await storage.deleteSecret('ai_api_key');
+    return;
+  }
+  await storage.setSecret('ai_api_key', key);
 }
 
 export async function getApiKey(): Promise<string> {
-  const stored = await getConfig('ai_api_key', '');
-  return deobfuscateKey(stored);
+  try {
+    const key = await storage.getSecret('ai_api_key');
+    return key || '';
+  } catch {
+    return '';
+  }
 }
 
 // === DISMISS FINDINGS ===

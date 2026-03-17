@@ -113,13 +113,6 @@ export async function runProjectScan(projectKey: string): Promise<ProjectScore> 
     const { runIntelligenceChecks, runAIContradictionAnalysis } = await import('../analyzers/intelligence');
     const intelligenceFindings = await runIntelligenceChecks(issues, allPages, pageContents, projectKey, aiEnabled);
     allFindings.push(...intelligenceFindings);
-
-    if (aiEnabled) {
-      try {
-        const aiFindings = await runAIContradictionAnalysis(issues, allPages, pageContents, projectKey);
-        allFindings.push(...aiFindings);
-      } catch (err) { console.log('[Scan] AI analysis failed:', err); }
-    }
   } catch (err) { console.log('[Scan] Intelligence checks failed:', err); }
 
   console.log(`[Scan] ${projectKey}: ${allFindings.length} findings`);

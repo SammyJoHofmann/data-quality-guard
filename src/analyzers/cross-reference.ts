@@ -37,42 +37,29 @@ export function analyzeCrossReferences(
 
       const referencedIssue = issueMap.get(key);
 
-      if (!referencedIssue) {
-        // Referenced issue doesn't exist or was deleted
+      if (!referencedIssue) continue; // Skip — can't verify if issue exists outside loaded batch
+
+      const isResolved = referencedIssue.fields.status?.statusCategory?.key === 'done';
+      const resolution = referencedIssue.fields.resolution?.name;
+
+      // Check if page references a resolved/closed issue (potential stale reference)
+      if (isResolved) {
         findings.push({
-          id: generateId('deadRef'),
+          id: generateId('staleRef'),
           itemType: 'confluence_page',
           itemKey: page.id,
           projectKey,
           checkType: 'cross_reference',
-          score: 30,
-          severity: 'high',
-          message: `Seite "${page.title}" verweist auf ${key} — Ticket existiert nicht oder wurde gelöscht`,
-          details: JSON.stringify({ pageTitle: page.title, missingIssue: key })
+          score: 50,
+          severity: 'medium',
+          message: `Seite "${page.title}" verweist auf ${key} (Status: ${resolution || 'Fertig'}) — Seite möglicherweise veraltet`,
+          details: JSON.stringify({
+            pageTitle: page.title,
+            issueKey: key,
+            issueStatus: referencedIssue.fields.status?.name,
+            issueResolution: resolution
+          })
         });
-      } else {
-        const isResolved = referencedIssue.fields.status?.statusCategory?.key === 'done';
-        const resolution = referencedIssue.fields.resolution?.name;
-
-        // Check if page references a resolved/closed issue (potential stale reference)
-        if (isResolved) {
-          findings.push({
-            id: generateId('staleRef'),
-            itemType: 'confluence_page',
-            itemKey: page.id,
-            projectKey,
-            checkType: 'cross_reference',
-            score: 50,
-            severity: 'medium',
-            message: `Seite "${page.title}" verweist auf ${key} (Status: ${resolution || 'Fertig'}) — Seite möglicherweise veraltet`,
-            details: JSON.stringify({
-              pageTitle: page.title,
-              issueKey: key,
-              issueStatus: referencedIssue.fields.status?.name,
-              issueResolution: resolution
-            })
-          });
-        }
       }
     }
   }

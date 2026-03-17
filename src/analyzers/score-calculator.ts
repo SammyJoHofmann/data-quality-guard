@@ -15,6 +15,13 @@ const WEIGHTS = {
   cross_reference: 0.20,
 };
 
+function getScoreGroup(checkType: string): string {
+  if (checkType === 'staleness' || checkType === 'stale_documentation') return 'staleness';
+  if (checkType === 'completeness' || checkType === 'sprint_readiness' || checkType === 'lost_knowledge') return 'completeness';
+  if (checkType === 'cross_reference') return 'cross_reference';
+  return 'consistency'; // consistency, ai_contradiction, and anything else
+}
+
 export function calculateProjectScore(
   findings: Finding[],
   projectKey: string,
@@ -29,8 +36,8 @@ export function calculateProjectScore(
   };
 
   for (const f of findings) {
-    const key = f.checkType in grouped ? f.checkType : 'consistency';
-    grouped[key].push(f);
+    const group = getScoreGroup(f.checkType);
+    grouped[group].push(f);
   }
 
   // Calculate sub-scores
@@ -80,7 +87,7 @@ function calculateSubScore(findings: Finding[], totalItems: number): number {
 
   // Normalize penalty relative to total items
   // Max penalty per item is 5 (critical), so max total = totalItems * 5
-  const maxPenalty = totalItems * 2; // Realistic max
+  const maxPenalty = totalItems * 1.2; // Stricter scoring — 5 critical at 100 issues should hurt
   const normalizedPenalty = Math.min(totalPenalty / maxPenalty, 1.0);
 
   return 100 * (1 - normalizedPenalty);
