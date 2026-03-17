@@ -201,10 +201,11 @@ function Dashboard() {
   const [error, setError] = useState(null);
   const [settings, setSettings] = useState(false);
   const [pg, setPg] = useState(0);
+  const [sevFilter, setSevFilter] = useState('all');
   const pp = 15;
 
   useEffect(() => { load(); }, []);
-  const load = async () => { setLoading(true); setError(null); try { setData(await invoke('getProjectScore')); } catch (e) { setError(safe(e?.message || 'Fehler')); } setLoading(false); };
+  const load = async () => { setLoading(true); setError(null); setSevFilter('all'); try { setData(await invoke('getProjectScore')); } catch (e) { setError(safe(e?.message || 'Fehler')); } setLoading(false); };
   const scan = async () => { setScanning(true); try { await invoke('triggerScan'); await load(); } catch (e) { setError(safe(e?.message)); } setScanning(false); };
 
   if (settings) return <Settings onClose={() => { setSettings(false); load(); }} />;
@@ -239,8 +240,9 @@ function Dashboard() {
     return counts;
   })();
 
-  const totalPg = Math.ceil(findings.length / pp);
-  const paged = findings.slice(pg * pp, (pg + 1) * pp);
+  const filtered = sevFilter === 'all' ? findings : findings.filter(f => safe(f.severity) === sevFilter);
+  const totalPg = Math.ceil(filtered.length / pp);
+  const paged = filtered.slice(pg * pp, (pg + 1) * pp);
 
   return (
     <div className="app">
@@ -336,15 +338,31 @@ function Dashboard() {
       {/* Findings */}
       {findings.length > 0 ? (
         <div className="section">
-          <div className="section-head"><span className="section-title">Probleme</span><span className="section-count">{fc}</span></div>
+          <div className="section-head">
+            <span className="section-title">Probleme</span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button className="btn btn-secondary" onClick={() => {
+                const csv = ['Schwere;Ticket;Problem;Empfehlung',
+                  ...findings.map(f => `${sevLabel(f.severity)};${safe(f.item_key)};${safe(f.message).replace(/;/g, ',')};${recommend(f)}`)
+                ].join('\n');
+                const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = `dqg-report-${new Date().toISOString().slice(0,10)}.csv`;
+                a.click(); URL.revokeObjectURL(url);
+              }} style={{ fontSize: 12, padding: '4px 10px' }}>CSV Export</button>
+              <span className="section-count">{fc}</span>
+            </div>
+          </div>
           <div className="sev-row">
-            {sc.critical > 0 && <span className="sev sev-critical">{sc.critical} Kritisch</span>}
-            {sc.high > 0 && <span className="sev sev-high">{sc.high} Hoch</span>}
-            {sc.medium > 0 && <span className="sev sev-medium">{sc.medium} Mittel</span>}
-            {sc.low > 0 && <span className="sev sev-low">{sc.low} Niedrig</span>}
+            <button className={`sev ${sevFilter === 'all' ? 'sev-all-active' : ''}`} onClick={() => { setSevFilter('all'); setPg(0); }}>Alle {fc}</button>
+            {sc.critical > 0 && <button className={`sev sev-critical ${sevFilter === 'critical' ? 'sev-active' : ''}`} onClick={() => { setSevFilter('critical'); setPg(0); }}>{sc.critical} Kritisch</button>}
+            {sc.high > 0 && <button className={`sev sev-high ${sevFilter === 'high' ? 'sev-active' : ''}`} onClick={() => { setSevFilter('high'); setPg(0); }}>{sc.high} Hoch</button>}
+            {sc.medium > 0 && <button className={`sev sev-medium ${sevFilter === 'medium' ? 'sev-active' : ''}`} onClick={() => { setSevFilter('medium'); setPg(0); }}>{sc.medium} Mittel</button>}
+            {sc.low > 0 && <button className={`sev sev-low ${sevFilter === 'low' ? 'sev-active' : ''}`} onClick={() => { setSevFilter('low'); setPg(0); }}>{sc.low} Niedrig</button>}
           </div>
           <table className="tbl">
-            <thead><tr><th style={{ width: 76 }}>Schwere</th><th style={{ width: 80 }}>Ticket</th><th>Problem</th><th style={{ width: 190 }}>Empfehlung</th></tr></thead>
+            <thead><tr><th style={{ width: 76 }}>Schwere</th><th style={{ width: 80 }}>Ticket</th><th>Problem</th><th style={{ width: 190 }}>Empfehlung</th><th style={{ width: 36 }}></th></tr></thead>
             <tbody>
               {paged.map((f, i) => (
                 <tr key={i}>
@@ -358,6 +376,12 @@ function Dashboard() {
                   </td>
                   <td className="tbl-msg">{safe(f.message) || safe(f.check_type)}</td>
                   <td className="tbl-rec">{recommend(f)}</td>
+                  <td>
+                    <button className="btn-dismiss" onClick={async () => {
+                      await invoke('dismissFinding', { findingId: safe(f.id) });
+                      load();
+                    }} title="Als erledigt markieren">×</button>
+                  </td>
                 </tr>
               ))}
             </tbody>

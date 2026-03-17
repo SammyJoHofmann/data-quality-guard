@@ -340,6 +340,21 @@ body {
 .empty-title { font-size: var(--text-lg); font-weight: 650; margin-bottom: var(--space-2); }
 .empty-desc { font-size: var(--text-sm); color: var(--c-text-secondary); margin-bottom: var(--space-5); }
 
+/* ============ DISMISS BUTTON ============ */
+.btn-dismiss {
+  width: 24px; height: 24px; border: none; border-radius: 4px;
+  background: transparent; color: var(--c-text-tertiary); cursor: pointer;
+  font-size: 14px; display: flex; align-items: center; justify-content: center;
+  transition: all 150ms ease;
+}
+.btn-dismiss:hover { background: var(--c-red-subtle); color: var(--c-red); }
+
+/* ============ FILTER ACTIVE STATE ============ */
+.sev { cursor: pointer; border: 1px solid transparent; transition: all 150ms ease; }
+.sev:hover { opacity: 0.8; }
+.sev-active { border-color: currentColor !important; font-weight: 700; }
+.sev-all-active { background: var(--c-text-primary); color: #fff; }
+
 /* ============ ACCESSIBLE ============ */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

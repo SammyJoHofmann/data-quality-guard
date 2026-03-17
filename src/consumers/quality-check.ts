@@ -55,7 +55,7 @@ export async function handler(event: any): Promise<void> {
     const allFindings: Finding[] = [];
 
     // Staleness
-    allFindings.push(...analyzeJiraStaleness(issues, projectKey));
+    allFindings.push(...await analyzeJiraStaleness(issues, projectKey));
     allFindings.push(...analyzeConfluenceStaleness(allPages, projectKey));
 
     // Completeness

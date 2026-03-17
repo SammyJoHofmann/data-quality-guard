@@ -170,4 +170,23 @@ resolver.define('dismissFinding', async ({ payload }: any) => {
   return { success: true };
 });
 
+resolver.define('getThresholds', async () => {
+  await initializeDatabase();
+  return {
+    staleWarningDays: Number(await getConfig('threshold_stale_warning', '30')),
+    staleCriticalDays: Number(await getConfig('threshold_stale_critical', '90')),
+    inProgressWarningDays: Number(await getConfig('threshold_inprogress_warning', '14')),
+    inProgressCriticalDays: Number(await getConfig('threshold_inprogress_critical', '60')),
+  };
+});
+
+resolver.define('saveThresholds', async ({ payload }: any) => {
+  await initializeDatabase();
+  if (payload?.staleWarningDays) await setConfig('threshold_stale_warning', String(payload.staleWarningDays));
+  if (payload?.staleCriticalDays) await setConfig('threshold_stale_critical', String(payload.staleCriticalDays));
+  if (payload?.inProgressWarningDays) await setConfig('threshold_inprogress_warning', String(payload.inProgressWarningDays));
+  if (payload?.inProgressCriticalDays) await setConfig('threshold_inprogress_critical', String(payload.inProgressCriticalDays));
+  return { success: true };
+});
+
 export const handler = resolver.getDefinitions();

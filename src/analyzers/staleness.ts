@@ -8,8 +8,8 @@
 import { JiraIssue, ConfluencePage, Finding } from '../scanner/types';
 import { generateId, daysSince, severityFromScore } from '../utils/helpers';
 
-// Configurable thresholds (days)
-const THRESHOLDS = {
+// Configurable thresholds — loaded from DB or defaults
+let THRESHOLDS = {
   ISSUE_STALE_WARNING: 30,
   ISSUE_STALE_CRITICAL: 90,
   ISSUE_IN_PROGRESS_WARNING: 14,
@@ -18,7 +18,18 @@ const THRESHOLDS = {
   PAGE_STALE_CRITICAL: 180,
 };
 
-export function analyzeJiraStaleness(issues: JiraIssue[], projectKey: string): Finding[] {
+export async function loadThresholds(): Promise<void> {
+  try {
+    const { getConfig } = await import('../db/queries');
+    THRESHOLDS.ISSUE_STALE_WARNING = Number(await getConfig('threshold_stale_warning', '30')) || 30;
+    THRESHOLDS.ISSUE_STALE_CRITICAL = Number(await getConfig('threshold_stale_critical', '90')) || 90;
+    THRESHOLDS.ISSUE_IN_PROGRESS_WARNING = Number(await getConfig('threshold_inprogress_warning', '14')) || 14;
+    THRESHOLDS.ISSUE_IN_PROGRESS_CRITICAL = Number(await getConfig('threshold_inprogress_critical', '60')) || 60;
+  } catch {}
+}
+
+export async function analyzeJiraStaleness(issues: JiraIssue[], projectKey: string): Promise<Finding[]> {
+  await loadThresholds();
   const findings: Finding[] = [];
 
   for (const issue of issues) {

@@ -34,9 +34,12 @@ export async function runProjectScan(projectKey: string): Promise<ProjectScore> 
   const issues = await getProjectIssues(projectKey);
   console.log(`[Scan] ${projectKey}: ${issues.length} issues found`);
 
-  // 2. Run analyzers
+  // 2. Load configurable thresholds + run analyzers
+  const { loadThresholds } = await import('../analyzers/staleness');
+  await loadThresholds();
+
   const allFindings: Finding[] = [];
-  allFindings.push(...analyzeJiraStaleness(issues, projectKey));
+  allFindings.push(...await analyzeJiraStaleness(issues, projectKey));
   allFindings.push(...analyzeCompleteness(issues, projectKey));
 
   // 2b. Advanced checks
