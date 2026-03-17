@@ -17,8 +17,20 @@ export function analyzeCompleteness(issues: JiraIssue[], projectKey: string): Fi
     const issueType = f.issuetype?.name?.toLowerCase() || '';
 
     // No description (Jira v3 returns ADF object, not string)
+    // Check if description has actual content
+    let hasDescription = false;
+    if (typeof f.description === 'string') {
+      hasDescription = f.description.trim().length >= 10;
+    } else if (f.description && typeof f.description === 'object') {
+      // ADF format: check if content array has actual text nodes
+      const content = (f.description as any).content || [];
+      const textContent = JSON.stringify(content);
+      // Empty ADF: content is [] or contains only empty paragraphs
+      hasDescription = content.length > 0 && textContent.length > 30;
+    }
+
     const descText = typeof f.description === 'string' ? f.description : JSON.stringify(f.description || '');
-    if (!f.description || descText.length < 20) {
+    if (!hasDescription) {
       findings.push({
         id: generateId('noDesc'),
         itemType: 'jira_issue',

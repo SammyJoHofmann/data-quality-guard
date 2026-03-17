@@ -5,29 +5,33 @@
 // PURPOSE: Rovo Agent action — triggers a project scan
 // ============================================================
 
-import { Queue } from '@forge/events';
 import { initializeDatabase } from '../db/schema';
-import { generateId } from '../utils/helpers';
+import { runProjectScan } from '../scanner/run-scan';
 
-const queue = new Queue({ key: 'quality-checks' });
-
-export async function handler(payload: any): Promise<string> {
-  const { projectKey } = payload;
-
-  if (!projectKey) {
-    return 'Please provide a project key (e.g., PROJ).';
+export const handler = async ({ payload, context }: any) => {
+  await initializeDatabase();
+  const projectKey = payload?.projectKey;
+  if (!projectKey || typeof projectKey !== 'string') {
+    return 'Bitte gib einen Projekt-Key an (z.B. "KAN").';
   }
 
-  await initializeDatabase();
+  const key = projectKey.toUpperCase().trim();
+  if (!/^[A-Z][A-Z0-9]{1,9}$/.test(key)) {
+    return `Ungültiger Projekt-Key: "${projectKey}". Format: 2-10 Großbuchstaben/Zahlen.`;
+  }
 
-  const scanId = generateId('scan');
-  await queue.push({
-    body: {
-      scanId,
-      projectKey: projectKey.toUpperCase(),
-      scanType: 'manual'
-    }
-  });
-
-  return `Scan started for project ${projectKey.toUpperCase()} (ID: ${scanId}). Results will be available in a few minutes on the project dashboard.`;
-}
+  try {
+    const score = await runProjectScan(key);
+    return `Scan abgeschlossen für Projekt ${key}:
+- Gesamtnote: ${score.overallScore}/100
+- Aktualität: ${score.stalenessScore}
+- Vollständigkeit: ${score.completenessScore}
+- Konsistenz: ${score.consistencyScore}
+- Querverweise: ${score.crossRefScore}
+- Gefundene Probleme: ${score.findingsCount}
+- Gescannte Tickets: ${score.totalIssues}`;
+  } catch (err: any) {
+    console.error('[RovoAgent] Scan failed:', err);
+    return `Scan für ${key} fehlgeschlagen. Bitte versuche es erneut.`;
+  }
+};

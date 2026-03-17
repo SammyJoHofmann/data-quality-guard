@@ -72,7 +72,7 @@ export async function analyzeJiraStaleness(issues: JiraIssue[], projectKey: stri
     }
 
     // Check: "In Progress" for too long
-    if (statusCategory === 'indeterminate' && statusName.toLowerCase().includes('progress')) {
+    if (statusCategory === 'indeterminate') {
       if (daysInactive >= THRESHOLDS.ISSUE_IN_PROGRESS_CRITICAL) {
         findings.push({
           id: generateId('stuck'),

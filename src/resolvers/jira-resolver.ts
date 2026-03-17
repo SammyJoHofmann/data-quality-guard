@@ -66,7 +66,10 @@ const resolver = new Resolver();
 resolver.define('getProjectScore', async ({ payload, context }: any) => {
   await initializeDatabase();
   const projectKey = context?.extension?.project?.key || payload?.projectKey;
-  if (!projectKey) return { error: 'No project context' };
+  if (!projectKey) {
+    console.error('[Resolver] getProjectScore: No project context');
+    return { error: 'Ein Fehler ist aufgetreten. Bitte versuche es erneut.' };
+  }
 
   const rawScore = await getLatestProjectScore(projectKey);
   const rawFindings = await getProjectFindings(projectKey, 100);
@@ -111,7 +114,10 @@ resolver.define('getAllScores', async () => {
 resolver.define('triggerScan', async ({ payload, context }: any) => {
   await initializeDatabase();
   const projectKey = context?.extension?.project?.key || payload?.projectKey;
-  if (!projectKey) return { error: 'No project context' };
+  if (!projectKey) {
+    console.error('[Resolver] triggerScan: No project context');
+    return { error: 'Ein Fehler ist aufgetreten. Bitte versuche es erneut.' };
+  }
 
   // Rate-limit: max 1 scan per 5 minutes per project
   const lastScanKey = `last_scan_${projectKey}`;
@@ -157,20 +163,23 @@ resolver.define('saveSettings', async ({ payload, context }: any) => {
   // Input validation
   if (payload?.aiEnabled !== undefined) {
     if (typeof payload.aiEnabled !== 'boolean') {
-      return { error: 'aiEnabled must be a boolean' };
+      console.error('[Resolver] saveSettings: aiEnabled is not a boolean');
+      return { error: 'Ein Fehler ist aufgetreten. Bitte versuche es erneut.' };
     }
     await setConfig('ai_enabled', payload.aiEnabled ? 'true' : 'false');
   }
   if (payload?.apiKey !== undefined && payload.apiKey.length > 0 && !payload.apiKey.startsWith('***')) {
     const key = String(payload.apiKey);
     if (key.length > 200) {
-      return { error: 'apiKey must be 200 characters or less' };
+      console.error('[Resolver] saveSettings: apiKey exceeds 200 characters');
+      return { error: 'Ein Fehler ist aufgetreten. Bitte versuche es erneut.' };
     }
     await setApiKey(key);
   }
   if (payload?.provider !== undefined) {
     if (!validProviders.includes(payload.provider)) {
-      return { error: `provider must be one of: ${validProviders.join(', ')}` };
+      console.error('[Resolver] saveSettings: invalid provider', payload.provider);
+      return { error: 'Ein Fehler ist aufgetreten. Bitte versuche es erneut.' };
     }
     await setConfig('ai_provider', String(payload.provider));
   }
@@ -192,7 +201,10 @@ resolver.define('deleteApiKey', async ({ context }: any) => {
 resolver.define('dismissFinding', async ({ payload, context }: any) => {
   await initializeDatabase();
   const findingId = payload?.findingId;
-  if (!findingId) return { error: 'No findingId' };
+  if (!findingId) {
+    console.error('[Resolver] dismissFinding: No findingId provided');
+    return { error: 'Ein Fehler ist aufgetreten. Bitte versuche es erneut.' };
+  }
   const { dismissFinding } = await import('../db/queries');
   await dismissFinding(String(findingId));
   await logAudit('finding_dismissed', context?.accountId || 'unknown', null, `findingId=${findingId}`);
@@ -211,10 +223,19 @@ resolver.define('getThresholds', async () => {
 
 resolver.define('saveThresholds', async ({ payload }: any) => {
   await initializeDatabase();
-  if (payload?.staleWarningDays) await setConfig('threshold_stale_warning', String(payload.staleWarningDays));
-  if (payload?.staleCriticalDays) await setConfig('threshold_stale_critical', String(payload.staleCriticalDays));
-  if (payload?.inProgressWarningDays) await setConfig('threshold_inprogress_warning', String(payload.inProgressWarningDays));
-  if (payload?.inProgressCriticalDays) await setConfig('threshold_inprogress_critical', String(payload.inProgressCriticalDays));
+  const sw = Number(payload?.staleWarningDays);
+  const sc = Number(payload?.staleCriticalDays);
+  const iw = Number(payload?.inProgressWarningDays);
+  const ic = Number(payload?.inProgressCriticalDays);
+
+  // Validate: warning must be less than critical
+  if (sw && sc && sw >= sc) return { error: 'Veraltet-Warnung muss kleiner sein als Veraltet-Kritisch.' };
+  if (iw && ic && iw >= ic) return { error: 'In-Progress-Warnung muss kleiner sein als In-Progress-Kritisch.' };
+
+  if (sw) await setConfig('threshold_stale_warning', String(Math.min(Math.max(1, sw), 365)));
+  if (sc) await setConfig('threshold_stale_critical', String(Math.min(Math.max(1, sc), 365)));
+  if (iw) await setConfig('threshold_inprogress_warning', String(Math.min(Math.max(1, iw), 365)));
+  if (ic) await setConfig('threshold_inprogress_critical', String(Math.min(Math.max(1, ic), 365)));
   return { success: true };
 });
 

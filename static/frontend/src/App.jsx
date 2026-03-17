@@ -114,6 +114,17 @@ function Settings({ onClose }) {
 
   const save = async () => {
     setSaving(true); setMsg(null);
+    // Validate thresholds: warning must be less than critical
+    if (thresholds.staleWarningDays >= thresholds.staleCriticalDays) {
+      setMsg({ ok: false, t: 'Veraltet-Warnung muss kleiner sein als Veraltet-Kritisch.' });
+      setSaving(false);
+      return;
+    }
+    if (thresholds.inProgressWarningDays >= thresholds.inProgressCriticalDays) {
+      setMsg({ ok: false, t: 'In-Progress-Warnung muss kleiner sein als In-Progress-Kritisch.' });
+      setSaving(false);
+      return;
+    }
     try { await invoke('saveSettings', { apiKey: key, provider, aiEnabled: ai }); await invoke('saveThresholds', thresholds); setMsg({ ok: true, t: 'Gespeichert' }); }
     catch (e) { setMsg({ ok: false, t: safe(e?.message) }); }
     setSaving(false);
@@ -450,7 +461,13 @@ function Dashboard() {
                     {safe(f.item_key).includes('-') ? (
                       <a className="tbl-link" href="#" onClick={e => { e.preventDefault(); router.navigate(`/browse/${safe(f.item_key)}`); }}>{safe(f.item_key)}</a>
                     ) : (
-                      <span style={{ fontSize: 12, color: 'var(--c-text-tertiary)' }}>Seite</span>
+                      <span style={{ fontSize: 12, color: 'var(--c-accent-text)', fontWeight: 500 }}>
+                        {(() => {
+                          const m = safe(f.message);
+                          const match = m.match(/Seite "([^"]+)"/);
+                          return match ? match[1].substring(0, 25) : 'Seite';
+                        })()}
+                      </span>
                     )}
                   </td>
                   <td className="tbl-msg">{safe(f.message) || safe(f.check_type)}</td>

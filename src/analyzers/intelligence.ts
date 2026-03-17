@@ -238,6 +238,11 @@ export async function checkSprintReadiness(
         // Nur offene/in-progress Issues prüfen
         if (statusKey === 'done') continue;
 
+        // Only check tickets marked for current sprint
+        const labels = (issue.fields.labels || []).map((l: string) => l.toLowerCase());
+        const isInSprint = labels.some(l => l.includes('sprint'));
+        if (!isInSprint) continue;
+
         const problems: string[] = [];
 
         // Keine Beschreibung
