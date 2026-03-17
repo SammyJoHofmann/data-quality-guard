@@ -512,10 +512,15 @@ function Confluence() {
     <div className="app">
       <div className="header"><span className="header-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 8, verticalAlign: 'text-bottom'}}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10" stroke="var(--c-green)"/></svg>Data Quality Guard</span></div>
       <div className="empty">
-        <div className="empty-title">Keine Daten</div>
-        <div className="empty-desc">Scans laufen automatisch stündlich.</div>
-        <div style={{ marginTop: 16, padding: '12px 20px', background: 'var(--c-accent-subtle)', borderRadius: 'var(--radius)', fontSize: 13, color: 'var(--c-accent)' }}>
-          Tipp: Öffne ein Projekt-Dashboard und klicke auf &bdquo;Scannen&ldquo;, um den ersten Scan zu starten.
+        <div style={{ fontSize: 40, marginBottom: 12 }}><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="1.5" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10" stroke="var(--c-green)"/></svg></div>
+        <div className="empty-title">Willkommen bei Data Quality Guard</div>
+        <div className="empty-desc">
+          Diese Übersicht zeigt die Datenqualität aller gescannten Jira-Projekte.<br/>
+          Fehlende Beschreibungen, veraltete Tickets, Widersprüche und mehr — alles auf einen Blick.
+        </div>
+        <div style={{ marginTop: 16, padding: '12px 20px', background: 'var(--c-accent-subtle)', borderRadius: 'var(--radius)', fontSize: 13, color: 'var(--c-accent)', lineHeight: 1.6 }}>
+          So startest du: Öffne ein Jira-Projekt und klicke dort auf &bdquo;Scannen&ldquo;, um den ersten Scan zu starten.<br/>
+          Danach erscheinen die Ergebnisse automatisch hier. Wiederholungs-Scans laufen stündlich.
         </div>
       </div>
     </div>

@@ -7,6 +7,20 @@
 
 import sql from '@forge/sql';
 
+// Simple obfuscation for API keys (Forge SQL is already encrypted at rest)
+// Uses btoa/atob (available in Forge runtime) instead of Node.js Buffer
+function obfuscateKey(key: string): string {
+  if (!key || key.startsWith('OBF:')) return key;
+  return 'OBF:' + btoa(key.split('').reverse().join(''));
+}
+
+function deobfuscateKey(stored: string): string {
+  if (!stored || !stored.startsWith('OBF:')) return stored;
+  try {
+    return atob(stored.slice(4)).split('').reverse().join('');
+  } catch { return ''; }
+}
+
 // === SCAN RESULTS ===
 
 export async function upsertScanResult(result: {
@@ -184,6 +198,17 @@ export async function setConfig(key: string, value: string): Promise<void> {
     REPLACE INTO app_config (config_key, config_value, updated_at)
     VALUES (?, ?, NOW())
   `).bindParams(key, value).execute();
+}
+
+// === API KEY (obfuscated storage) ===
+
+export async function setApiKey(key: string): Promise<void> {
+  await setConfig('ai_api_key', obfuscateKey(key));
+}
+
+export async function getApiKey(): Promise<string> {
+  const stored = await getConfig('ai_api_key', '');
+  return deobfuscateKey(stored);
 }
 
 // === DISMISS FINDINGS ===

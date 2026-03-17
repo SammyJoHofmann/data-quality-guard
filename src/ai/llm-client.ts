@@ -32,9 +32,9 @@ const CACHE_TTL = 60000;
 export async function isLLMAvailable(): Promise<boolean> {
   if (llmCache && Date.now() - llmCache.timestamp < CACHE_TTL) return llmCache.available;
   try {
-    const { getConfig } = await import('../db/queries');
+    const { getConfig, getApiKey } = await import('../db/queries');
     const enabled = await getConfig('ai_enabled', 'false');
-    const key = await getConfig('ai_api_key', '');
+    const key = await getApiKey();
     const available = enabled === 'true' && key.length >= 10;
     llmCache = { available, timestamp: Date.now() };
     return available;
@@ -50,9 +50,9 @@ export function invalidateLLMCache(): void {
 
 export async function getLLMConfig(): Promise<LLMConfig | null> {
   try {
-    const { getConfig } = await import('../db/queries');
+    const { getConfig, getApiKey } = await import('../db/queries');
     const provider = (await getConfig('ai_provider', 'gemini')) as Provider;
-    const apiKey = await getConfig('ai_api_key', '');
+    const apiKey = await getApiKey();
     if (!apiKey || apiKey.length < 10) return null;
     return { provider, apiKey };
   } catch {

@@ -6,7 +6,7 @@
 // ============================================================
 
 import Resolver from '@forge/resolver';
-import { getLatestProjectScore, getProjectFindings, getProjectScoreHistory, getAllProjectScores, getProjectContradictions, getConfig, setConfig } from '../db/queries';
+import { getLatestProjectScore, getProjectFindings, getProjectScoreHistory, getAllProjectScores, getProjectContradictions, getConfig, setConfig, getApiKey, setApiKey } from '../db/queries';
 import { initializeDatabase } from '../db/schema';
 import { runProjectScan } from '../scanner/run-scan';
 import { invalidateLLMCache } from '../ai/llm-client';
@@ -76,7 +76,7 @@ resolver.define('getProjectScore', async ({ payload, context }: any) => {
   try { contradictions = await getProjectContradictions(projectKey); } catch (err) { console.error('[Resolver] Contradictions query failed:', err); }
 
   const aiEnabled = await getConfig('ai_enabled', 'false');
-  const hasApiKey = (await getConfig('ai_api_key', '')).length > 0;
+  const hasApiKey = (await getApiKey()).length > 0;
 
   return {
     score: sanitizeScore(rawScore),
@@ -125,7 +125,7 @@ resolver.define('triggerScan', async ({ payload, context }: any) => {
 resolver.define('getSettings', async () => {
   await initializeDatabase();
   const aiEnabled = await getConfig('ai_enabled', 'false');
-  const rawKey = await getConfig('ai_api_key', '');
+  const rawKey = await getApiKey();
   const hasKey = rawKey.length > 0;
   const provider = await getConfig('ai_provider', 'gemini');
   const maskedKey = hasKey ? '***' + rawKey.slice(-4) : '';
@@ -140,13 +140,25 @@ resolver.define('getSettings', async () => {
 resolver.define('saveSettings', async ({ payload }: any) => {
   await initializeDatabase();
   const validProviders = ['claude', 'gemini', 'openai'];
+
+  // Input validation
   if (payload?.aiEnabled !== undefined) {
+    if (typeof payload.aiEnabled !== 'boolean') {
+      return { error: 'aiEnabled must be a boolean' };
+    }
     await setConfig('ai_enabled', payload.aiEnabled ? 'true' : 'false');
   }
   if (payload?.apiKey !== undefined && payload.apiKey.length > 0 && !payload.apiKey.startsWith('***')) {
-    await setConfig('ai_api_key', String(payload.apiKey));
+    const key = String(payload.apiKey);
+    if (key.length > 200) {
+      return { error: 'apiKey must be 200 characters or less' };
+    }
+    await setApiKey(key);
   }
-  if (payload?.provider !== undefined && validProviders.includes(payload.provider)) {
+  if (payload?.provider !== undefined) {
+    if (!validProviders.includes(payload.provider)) {
+      return { error: `provider must be one of: ${validProviders.join(', ')}` };
+    }
     await setConfig('ai_provider', String(payload.provider));
   }
   invalidateLLMCache();
@@ -155,7 +167,7 @@ resolver.define('saveSettings', async ({ payload }: any) => {
 
 resolver.define('deleteApiKey', async () => {
   await initializeDatabase();
-  await setConfig('ai_api_key', '');
+  await setApiKey('');
   await setConfig('ai_enabled', 'false');
   invalidateLLMCache();
   return { success: true };

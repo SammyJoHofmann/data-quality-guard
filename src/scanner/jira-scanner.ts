@@ -22,7 +22,8 @@ export async function getAllProjects(): Promise<JiraProject[]> {
 
 export async function getProjectIssues(
   projectKey: string,
-  updatedSince?: string
+  updatedSince?: string,
+  maxIssues = 500
 ): Promise<JiraIssue[]> {
   const allIssues: JiraIssue[] = [];
 
@@ -65,7 +66,7 @@ export async function getProjectIssues(
       allIssues.push(...issues);
 
       nextPageToken = data.nextPageToken;
-      hasMore = !data.isLast && !!nextPageToken && allIssues.length < 500;
+      hasMore = !data.isLast && !!nextPageToken && allIssues.length < maxIssues;
 
       console.log(`[JiraScanner] Page ${pageCount}: ${issues.length} issues (total: ${allIssues.length})`);
     }

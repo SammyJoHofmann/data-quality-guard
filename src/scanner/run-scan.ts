@@ -17,10 +17,10 @@ import { Finding, ProjectScore, ConfluencePage } from './types';
 
 async function isAIEnabled(): Promise<boolean> {
   try {
-    const { getConfig } = await import('../db/queries');
+    const { getConfig, getApiKey } = await import('../db/queries');
     const aiEnabled = await getConfig('ai_enabled', 'false');
     if (aiEnabled !== 'true') return false;
-    const apiKey = await getConfig('ai_api_key', '');
+    const apiKey = await getApiKey();
     return !!apiKey && apiKey.length >= 10;
   } catch { return false; }
 }
@@ -32,31 +32,56 @@ export async function runProjectScan(projectKey: string): Promise<ProjectScore> 
   console.log(`[Scan] Starting scan for ${projectKey}`);
 
   // 1. Get Jira issues
+  const t1 = Date.now();
   const issues = await getProjectIssues(projectKey);
-  console.log(`[Scan] ${projectKey}: ${issues.length} issues found`);
+  console.log(`[Scan] Jira: ${issues.length} issues in ${Date.now() - t1}ms`);
+
+  // Timeout protection: Forge functions have a 15-minute limit.
+  // Large projects with 2000+ issues make changelog-based checks (workflow anomalies)
+  // extremely slow because each issue requires a separate API call.
+  const isLargeProject = issues.length > 2000;
+  if (isLargeProject) {
+    console.warn(`[Scan] Large project (${issues.length} issues) — skipping advanced checks to stay within timeout`);
+  }
 
   // 2. Load configurable thresholds + run analyzers
   const { loadThresholds } = await import('../analyzers/staleness');
   await loadThresholds();
 
   const allFindings: Finding[] = [];
+
+  const t2 = Date.now();
   allFindings.push(...await analyzeJiraStaleness(issues, projectKey));
+  console.log(`[Scan] Staleness analyzer: ${Date.now() - t2}ms`);
+
+  const t3 = Date.now();
   allFindings.push(...analyzeCompleteness(issues, projectKey));
+  console.log(`[Scan] Completeness analyzer: ${Date.now() - t3}ms`);
 
   // 2b. Advanced checks
-  try {
-    allFindings.push(...await analyzeWorkflowAnomalies(issues, projectKey));
-  } catch (err) { console.log('[Scan] Workflow check failed:', err); }
+  // Workflow anomalies require changelog API calls per issue — skip for large projects
+  if (!isLargeProject) {
+    try {
+      const t4 = Date.now();
+      allFindings.push(...await analyzeWorkflowAnomalies(issues, projectKey));
+      console.log(`[Scan] Workflow anomalies: ${Date.now() - t4}ms`);
+    } catch (err) { console.log('[Scan] Workflow check failed:', err); }
+  }
 
   try {
+    const t5 = Date.now();
     allFindings.push(...analyzeOrphanIssues(issues, projectKey));
+    console.log(`[Scan] Orphan issues: ${Date.now() - t5}ms`);
   } catch (err) { console.log('[Scan] Orphan check failed:', err); }
 
   try {
+    const t6 = Date.now();
     allFindings.push(...analyzeOverloadedAssignees(issues, projectKey));
+    console.log(`[Scan] Overloaded assignees: ${Date.now() - t6}ms`);
   } catch (err) { console.log('[Scan] Overload check failed:', err); }
 
   // 2c. Confluence scan
+  const tConf = Date.now();
   const allPages: ConfluencePage[] = [];
   const pageContents = new Map<string, string>();
 
@@ -78,7 +103,7 @@ export async function runProjectScan(projectKey: string): Promise<ProjectScore> 
 
     allFindings.push(...analyzeConfluenceStaleness(allPages, projectKey));
     allFindings.push(...analyzeCrossReferences(issues, allPages, pageContents, projectKey));
-    console.log(`[Scan] ${projectKey}: ${allPages.length} Confluence pages scanned`);
+    console.log(`[Scan] Confluence: ${allPages.length} pages in ${Date.now() - tConf}ms`);
   } catch (err) {
     console.log('[Scan] Confluence scan failed:', err);
   }
@@ -100,19 +125,28 @@ export async function runProjectScan(projectKey: string): Promise<ProjectScore> 
   console.log(`[Scan] ${projectKey}: ${allFindings.length} findings`);
 
   // 3. Clear old results and save new ones
+  const tDb = Date.now();
   try {
     await clearProjectResults(projectKey);
   } catch (err) {
     console.log('[Scan] Clear failed (table may not exist yet), continuing...');
   }
 
-  for (const finding of allFindings.slice(0, 100)) {
+  // Save up to 200 findings individually.
+  // Forge Storage has no native batch upsert — if performance becomes an issue,
+  // consider implementing batchUpsertScanResults() with Promise.all() chunks of 10.
+  const maxFindings = 200;
+  for (const finding of allFindings.slice(0, maxFindings)) {
     try {
       await upsertScanResult(finding);
     } catch (err) {
       console.error('[Scan] Failed to save finding:', err);
     }
   }
+  if (allFindings.length > maxFindings) {
+    console.warn(`[Scan] ${allFindings.length} findings found but only ${maxFindings} saved (limit)`);
+  }
+  console.log(`[Scan] DB save: ${Math.min(allFindings.length, maxFindings)} findings in ${Date.now() - tDb}ms`);
 
   // 4. Calculate score
   const score = calculateProjectScore(allFindings, projectKey, issues.length);
