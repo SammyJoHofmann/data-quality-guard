@@ -70,6 +70,8 @@ html, body {
   overflow: visible !important;
 }
 
+#root { min-height: 100px; }
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {

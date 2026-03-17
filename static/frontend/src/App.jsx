@@ -234,7 +234,13 @@ function Dashboard() {
   const pp = 15;
 
   useEffect(() => { load(); }, []);
-  const load = async () => { setLoading(true); setError(null); setSevFilter('all'); try { setData(await invoke('getProjectScore')); } catch (e) { setError(safe(e?.message || 'Fehler')); } setLoading(false); };
+  const load = async () => {
+    setLoading(true); setError(null); setSevFilter('all');
+    try { setData(await invoke('getProjectScore')); } catch (e) { setError(safe(e?.message || 'Fehler')); }
+    setLoading(false);
+    // Trigger iframe resize after content renders
+    setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 100);
+  };
   const scan = async () => { setScanning(true); try { await invoke('triggerScan'); await load(); } catch (e) { setError(safe(e?.message)); } setScanning(false); };
 
   if (settings) return <Settings onClose={() => { setSettings(false); load(); }} />;
