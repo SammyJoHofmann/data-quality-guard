@@ -6,7 +6,7 @@
 // ============================================================
 
 import Resolver from '@forge/resolver';
-import { getLatestProjectScore, getProjectFindings, getProjectScoreHistory, getAllProjectScores, getProjectContradictions, getConfig, setConfig, getApiKey, setApiKey } from '../db/queries';
+import { getLatestProjectScore, getProjectFindings, getProjectScoreHistory, getAllProjectScores, getProjectContradictions, getConfig, setConfig, getApiKey, setApiKey, logAudit } from '../db/queries';
 import { initializeDatabase } from '../db/schema';
 import { runProjectScan } from '../scanner/run-scan';
 import { invalidateLLMCache } from '../ai/llm-client';
@@ -113,12 +113,25 @@ resolver.define('triggerScan', async ({ payload, context }: any) => {
   const projectKey = context?.extension?.project?.key || payload?.projectKey;
   if (!projectKey) return { error: 'No project context' };
 
+  // Rate-limit: max 1 scan per 5 minutes per project
+  const lastScanKey = `last_scan_${projectKey}`;
+  const lastScan = await getConfig(lastScanKey, '0');
+  const elapsed = Date.now() - Number(lastScan);
+  if (elapsed < 300000) {
+    const remaining = Math.ceil((300000 - elapsed) / 60000);
+    return { error: `Bitte ${remaining} Minute(n) warten. Scans sind auf einmal pro 5 Minuten begrenzt.` };
+  }
+  await setConfig(lastScanKey, String(Date.now()));
+
+  const actorId = context?.accountId || 'unknown';
+  await logAudit('scan_triggered', actorId, projectKey, null);
+
   try {
     const result = await runProjectScan(projectKey);
     return { message: `Scan complete for ${projectKey}`, score: result.overallScore, findings: result.findingsCount };
   } catch (err: any) {
     console.error('[triggerScan] Error:', err);
-    return { error: err.message || 'Scan failed' };
+    return { error: 'Scan fehlgeschlagen. Bitte versuche es erneut.' };
   }
 });
 
@@ -137,7 +150,7 @@ resolver.define('getSettings', async () => {
   };
 });
 
-resolver.define('saveSettings', async ({ payload }: any) => {
+resolver.define('saveSettings', async ({ payload, context }: any) => {
   await initializeDatabase();
   const validProviders = ['claude', 'gemini', 'openai'];
 
@@ -162,23 +175,27 @@ resolver.define('saveSettings', async ({ payload }: any) => {
     await setConfig('ai_provider', String(payload.provider));
   }
   invalidateLLMCache();
+  const actorId = context?.accountId || 'unknown';
+  await logAudit('settings_changed', actorId, null, `provider=${payload.provider || 'unknown'}, ai=${payload.aiEnabled}`);
   return { success: true };
 });
 
-resolver.define('deleteApiKey', async () => {
+resolver.define('deleteApiKey', async ({ context }: any) => {
   await initializeDatabase();
   await setApiKey('');
   await setConfig('ai_enabled', 'false');
   invalidateLLMCache();
+  await logAudit('api_key_deleted', context?.accountId || 'unknown', null, null);
   return { success: true };
 });
 
-resolver.define('dismissFinding', async ({ payload }: any) => {
+resolver.define('dismissFinding', async ({ payload, context }: any) => {
   await initializeDatabase();
   const findingId = payload?.findingId;
   if (!findingId) return { error: 'No findingId' };
   const { dismissFinding } = await import('../db/queries');
   await dismissFinding(String(findingId));
+  await logAudit('finding_dismissed', context?.accountId || 'unknown', null, `findingId=${findingId}`);
   return { success: true };
 });
 

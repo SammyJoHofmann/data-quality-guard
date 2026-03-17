@@ -27,6 +27,18 @@ async function isAIEnabled(): Promise<boolean> {
 
 export async function runProjectScan(projectKey: string): Promise<ProjectScore> {
   const scanStart = Date.now();
+
+  // Scan lock to prevent race conditions
+  const { getConfig, setConfig } = await import('../db/queries');
+  const lockKey = `scan_lock_${projectKey}`;
+  const existingLock = await getConfig(lockKey, '0');
+  if (existingLock !== '0' && Date.now() - Number(existingLock) < 600000) {
+    console.warn(`[Scan] ${projectKey}: Scan already running (locked ${Math.round((Date.now() - Number(existingLock)) / 1000)}s ago)`);
+    throw new Error('Scan already in progress for this project');
+  }
+  await setConfig(lockKey, String(Date.now()));
+
+  try {
   const aiEnabled = await isAIEnabled();
   console.log(`[Scan] AI mode: ${aiEnabled ? 'ENABLED' : 'DISABLED'}`);
   console.log(`[Scan] Starting scan for ${projectKey}`);
@@ -159,4 +171,8 @@ export async function runProjectScan(projectKey: string): Promise<ProjectScore> 
   }
 
   return score;
+  } finally {
+    // Ensure lock is always released, even on error
+    await setConfig(lockKey, '0').catch(() => {});
+  }
 }

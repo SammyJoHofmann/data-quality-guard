@@ -108,6 +108,19 @@ const migrations = migrationRunner
       INDEX idx_project_ai (project_key),
       INDEX idx_item_ai (item_key)
     )
+  `)
+  .enqueue('v010_create_audit_log', `
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      action VARCHAR(50) NOT NULL,
+      actor_id VARCHAR(100),
+      project_key VARCHAR(50),
+      details TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_audit_action (action),
+      INDEX idx_audit_actor (actor_id),
+      INDEX idx_audit_time (created_at)
+    )
   `);
 
 let initialized = false;

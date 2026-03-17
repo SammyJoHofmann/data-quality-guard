@@ -218,13 +218,19 @@ export async function analyzeContradiction(
     if (!jsonMatch) return { hasContradiction: false, confidence: 0, contradictions: [] };
 
     const parsed = JSON.parse(jsonMatch[0]);
+
+    // Sanitize LLM output to prevent injected content (links, excessive length)
+    function sanitizeLLMText(text: string): string {
+      return text.substring(0, 500).replace(/https?:\/\/\S+/g, '[Link]');
+    }
+
     return {
       hasContradiction: parsed.has_contradiction === true,
       confidence: Number(parsed.confidence) || 0,
       contradictions: (parsed.contradictions || []).map((c: any) => ({
         type: String(c.type || 'unknown'),
-        description: String(c.description || ''),
-        recommendation: String(c.recommendation || ''),
+        description: sanitizeLLMText(String(c.description || '')),
+        recommendation: sanitizeLLMText(String(c.recommendation || '')),
       })),
     };
   } catch {

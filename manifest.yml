@@ -139,10 +139,6 @@ permissions:
     - read:space:confluence
   external:
     fetch:
-      client:
-        - api.anthropic.com
-        - generativelanguage.googleapis.com
-        - api.openai.com
       backend:
         - api.anthropic.com
         - generativelanguage.googleapis.com

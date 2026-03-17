@@ -118,6 +118,15 @@ export async function getAllProjectScores(): Promise<any[]> {
   return result.rows;
 }
 
+// === SCANNED PROJECT KEYS ===
+
+export async function getScannedProjectKeys(): Promise<string[]> {
+  const result = await sql.prepare(
+    `SELECT DISTINCT project_key FROM project_scores`
+  ).execute();
+  return (result.rows || []).map((r: any) => String(r.project_key));
+}
+
 // === CONTRADICTIONS ===
 
 export async function saveContradiction(c: {
@@ -212,6 +221,18 @@ export async function dismissFinding(findingId: string): Promise<void> {
   await sql.prepare(`
     UPDATE scan_results SET dismissed = TRUE WHERE id = ?
   `).bindParams(findingId).execute();
+}
+
+// === AUDIT LOG ===
+
+export async function logAudit(action: string, actorId: string | null, projectKey: string | null, details: string | null): Promise<void> {
+  try {
+    await sql.prepare(
+      `INSERT INTO audit_log (action, actor_id, project_key, details) VALUES (?, ?, ?, ?)`
+    ).bindParams(action, actorId || 'system', projectKey || null, details || null).execute();
+  } catch (err) {
+    console.error('[Audit] Failed to log:', err);
+  }
 }
 
 // === AI ANALYSIS ===

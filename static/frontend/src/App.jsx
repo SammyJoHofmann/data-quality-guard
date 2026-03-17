@@ -254,7 +254,18 @@ function Dashboard() {
     // Trigger iframe resize after content renders
     setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 100);
   };
-  const scan = async () => { setScanning(true); try { await invoke('triggerScan'); await load(); } catch (e) { setError(safe(e?.message)); } setScanning(false); };
+  const scan = async () => {
+    setScanning(true); setError(null);
+    try {
+      const result = await invoke('triggerScan');
+      if (result?.error) {
+        setError(result.error);
+      } else {
+        await load();
+      }
+    } catch (e) { setError(safe(e?.message)); }
+    setScanning(false);
+  };
 
   if (settings) return <Settings onClose={() => { setSettings(false); load(); }} />;
   if (loading) return <div className="loading"><div className="loading-ring" /><span className="loading-text">Lade Dashboard...</span></div>;
