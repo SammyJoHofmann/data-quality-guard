@@ -38,7 +38,29 @@ export async function runIntelligenceChecks(
     const sprintFindings = await checkSprintReadiness(issues, projectKey);
     allFindings.push(...sprintFindings);
 
-    // 4. KI-Widerspruchsanalyse (nur wenn aktiviert)
+    // 4. Regelbasierte Widerspruchserkennung (immer aktiv)
+    const ruleCandidates = findContradictionCandidates(issues, pages, pageContents);
+    if (ruleCandidates.length > 0) {
+      for (const candidate of ruleCandidates.slice(0, 20)) {
+        // Regelbasierter Widerspruchs-Hinweis (ohne KI)
+        const isDone = issues.find(i => i.key === candidate.jiraKey)?.fields.status.statusCategory.key === 'done';
+        if (isDone) {
+          allFindings.push({
+            id: generateId('rule_contra'),
+            itemType: 'confluence_page',
+            itemKey: candidate.pageId,
+            projectKey,
+            checkType: 'consistency',
+            score: 35,
+            severity: candidate.sharedKeywords.length >= 5 ? 'high' : 'medium',
+            message: `Möglicher Widerspruch: Seite "${candidate.pageTitle}" könnte veraltet sein — Ticket ${candidate.jiraKey} (erledigt) beschreibt Änderungen zum gleichen Thema (${candidate.sharedKeywords.slice(0, 5).join(', ')})`,
+          });
+        }
+      }
+      console.log(`[Intelligence] ${ruleCandidates.length} regelbasierte Widerspruchs-Kandidaten gefunden`);
+    }
+
+    // 5. KI-Widerspruchsanalyse (nur wenn aktiviert)
     if (aiEnabled) {
       const aiFindings = await runAIContradictionAnalysis(issues, pages, pageContents, projectKey);
       allFindings.push(...aiFindings);
@@ -349,11 +371,8 @@ export function findContradictionCandidates(
   const candidates: ContradictionCandidate[] = [];
 
   try {
-    // Nur offene/aktive Issues berücksichtigen
-    const activeIssues = issues.filter(
-      i => i.fields.status.statusCategory.key !== 'done'
-    );
-
+    // ALLE Issues prüfen — auch Done-Tickets beschreiben Änderungen
+    // die Confluence-Seiten widersprechen können
     for (const page of pages) {
       const rawContent = pageContents.get(page.id) || '';
       if (!rawContent || rawContent.length < 50) continue;
@@ -361,21 +380,22 @@ export function findContradictionCandidates(
       const pageText = stripHtml(rawContent).toLowerCase();
       const referencedKeys = extractJiraKeys(rawContent);
 
-      // Nur Seiten die Jira-Keys referenzieren
-      if (referencedKeys.length === 0) continue;
+      // Auch Seiten OHNE direkte Referenz prüfen (Keyword-Match)
+      for (const issue of issues) {
+        // Entweder Seite referenziert das Issue, oder starkes Keyword-Matching
+        const isReferenced = referencedKeys.includes(issue.key);
 
-      for (const issue of activeIssues) {
-        // Issue muss in der Seite referenziert sein
-        if (!referencedKeys.includes(issue.key)) continue;
-
+        const descRaw = issue.fields.description;
+        const descStr = typeof descRaw === 'string' ? descRaw : JSON.stringify(descRaw || '');
         const issueText = [
           issue.fields.summary || '',
-          issue.fields.description || '',
+          descStr,
         ].join(' ').toLowerCase();
 
         // Keyword-Matching: mindestens 3 gemeinsame relevante Wörter
         const sharedKeywords = findSharedKeywords(issueText, pageText);
-        if (sharedKeywords.length < 3) continue;
+        if (!isReferenced && sharedKeywords.length < 3) continue;
+        if (isReferenced && sharedKeywords.length < 2) continue;
 
         candidates.push({
           jiraKey: issue.key,
