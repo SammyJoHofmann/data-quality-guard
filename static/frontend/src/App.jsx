@@ -91,6 +91,7 @@ const IconBack = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="non
 // === SETTINGS ===
 function Settings({ onClose }) {
   const [key, setKey] = useState('');
+  const [provider, setProvider] = useState('gemini');
   const [ai, setAi] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -98,14 +99,20 @@ function Settings({ onClose }) {
 
   useEffect(() => {
     invoke('getSettings').then(s => {
-      if (s) { setKey(safe(s.apiKey)); setAi(s.aiEnabled === true || s.aiEnabled === 'true'); }
+      if (s) {
+        setKey(safe(s.apiKey));
+        setProvider(safe(s.provider) || 'gemini');
+        setAi(s.aiEnabled === true || s.aiEnabled === 'true');
+      }
       setReady(true);
     }).catch(() => setReady(true));
   }, []);
 
+  const providerPlaceholder = provider === 'gemini' ? 'AIza...' : provider === 'claude' ? 'sk-ant-...' : 'sk-...';
+
   const save = async () => {
     setSaving(true); setMsg(null);
-    try { await invoke('saveSettings', { apiKey: key, aiEnabled: ai }); setMsg({ ok: true, t: 'Gespeichert' }); }
+    try { await invoke('saveSettings', { apiKey: key, provider, aiEnabled: ai }); setMsg({ ok: true, t: 'Gespeichert' }); }
     catch (e) { setMsg({ ok: false, t: safe(e?.message) }); }
     setSaving(false);
   };
@@ -131,9 +138,35 @@ function Settings({ onClose }) {
         <h3>KI-Analyse</h3>
         <p className="subtitle">Ohne Key: regelbasierte Analyse. Mit Key: zusätzlich semantische Widerspruchserkennung.</p>
         <div className="form-group">
-          <label className="form-label" htmlFor="apikey">Claude API-Key</label>
-          <input id="apikey" className="form-input" type="password" placeholder="sk-ant-..." value={key} onChange={e => setKey(e.target.value)} />
-          <div className="form-hint">Erstellen auf console.anthropic.com</div>
+          <label className="form-label" htmlFor="apikey">API-Key</label>
+          <input id="apikey" className="form-input" type="password" placeholder={providerPlaceholder} value={key} onChange={e => setKey(e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">KI-Anbieter</label>
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            {[
+              { id: 'gemini', name: 'Google Gemini', hint: 'Günstig, Free Tier' },
+              { id: 'claude', name: 'Claude', hint: 'Beste Textanalyse' },
+              { id: 'openai', name: 'OpenAI', hint: 'GPT-4o-mini' },
+            ].map(p => (
+              <label key={p.id} style={{
+                flex: 1, padding: '10px 12px', borderRadius: 'var(--radius-sm)',
+                border: `1px solid ${provider === p.id ? 'var(--c-accent)' : 'var(--c-border)'}`,
+                background: provider === p.id ? 'var(--c-accent-subtle)' : 'var(--c-surface)',
+                cursor: 'pointer', transition: 'all 150ms ease'
+              }}>
+                <input type="radio" name="provider" value={p.id} checked={provider === p.id}
+                  onChange={() => setProvider(p.id)} style={{ display: 'none' }} />
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>{p.hint}</div>
+              </label>
+            ))}
+          </div>
+          <div className="form-hint">
+            {provider === 'gemini' && 'Kostenlos erstellen auf aistudio.google.com'}
+            {provider === 'claude' && 'Erstellen auf console.anthropic.com'}
+            {provider === 'openai' && 'Erstellen auf platform.openai.com'}
+          </div>
         </div>
         <div className="toggle-row" style={{ marginBottom: 20 }}>
           <label className="toggle"><input type="checkbox" checked={ai} onChange={() => setAi(!ai)} /><span className="toggle-track" /></label>

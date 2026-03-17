@@ -2,16 +2,17 @@
 // FILE: llm-client.ts
 // PATH: src/ai/llm-client.ts
 // PROJECT: DataQualityGuard
-// PURPOSE: LLM client — external Claude API only (no @forge/llm)
+// PURPOSE: Multi-Provider LLM Client (Claude, Gemini, OpenAI)
 // ============================================================
 
-import api, { fetch } from '@forge/api';
-import { getConfig } from '../db/queries';
+import api from '@forge/api';
 
-interface LLMResponse {
-  content: string;
-  model: string;
-  source: 'forge' | 'external';
+type Provider = 'claude' | 'gemini' | 'openai';
+
+interface LLMConfig {
+  provider: Provider;
+  apiKey: string;
+  model?: string;
 }
 
 export interface ContradictionResult {
@@ -24,153 +25,201 @@ export interface ContradictionResult {
   }[];
 }
 
-// === LLM Availability Cache (60s) ===
-
-let llmAvailableCache: { value: boolean; ts: number } | null = null;
-const LLM_CACHE_TTL = 60_000; // 60 seconds
+// Cache for availability check
+let llmCache: { available: boolean; timestamp: number } | null = null;
+const CACHE_TTL = 60000;
 
 export async function isLLMAvailable(): Promise<boolean> {
-  if (llmAvailableCache && Date.now() - llmAvailableCache.ts < LLM_CACHE_TTL) {
-    return llmAvailableCache.value;
-  }
+  if (llmCache && Date.now() - llmCache.timestamp < CACHE_TTL) return llmCache.available;
   try {
-    const aiEnabled = await getConfig('ai_enabled', 'false');
-    const apiKey = await getConfig('anthropic_api_key', '');
-    const available = aiEnabled === 'true' && apiKey.length > 0;
-    llmAvailableCache = { value: available, ts: Date.now() };
+    const { getConfig } = await import('../db/queries');
+    const enabled = await getConfig('ai_enabled', 'false');
+    const key = await getConfig('ai_api_key', '');
+    const available = enabled === 'true' && key.length >= 10;
+    llmCache = { available, timestamp: Date.now() };
     return available;
   } catch {
-    llmAvailableCache = { value: false, ts: Date.now() };
+    llmCache = { available: false, timestamp: Date.now() };
     return false;
   }
 }
 
 export function invalidateLLMCache(): void {
-  llmAvailableCache = null;
+  llmCache = null;
 }
 
-// === Main LLM Entry Point ===
-
-/**
- * Tries Forge LLMs API first (data stays on Atlassian).
- * Falls back to external Claude API if Forge LLMs unavailable.
- */
-export async function analyzWithLLM(prompt: string): Promise<LLMResponse> {
+export async function getLLMConfig(): Promise<LLMConfig | null> {
   try {
-    return await callForgeLLM(prompt);
-  } catch (err) {
-    console.log('[LLM] Forge LLMs unavailable, trying external API...');
-    try {
-      return await callExternalClaude(prompt);
-    } catch (extErr) {
-      console.error('[LLM] Both LLM sources failed:', extErr);
-      return {
-        content: 'LLM analysis unavailable. Using rule-based analysis only.',
-        model: 'none',
-        source: 'forge'
-      };
+    const { getConfig } = await import('../db/queries');
+    const provider = (await getConfig('ai_provider', 'gemini')) as Provider;
+    const apiKey = await getConfig('ai_api_key', '');
+    if (!apiKey || apiKey.length < 10) return null;
+    return { provider, apiKey };
+  } catch {
+    return null;
+  }
+}
+
+// The system prompt for contradiction detection
+const SYSTEM_PROMPT = `Du bist ein Datenqualitäts-Analyst. Deine Aufgabe: Finde inhaltliche Widersprüche zwischen einem Jira-Ticket und einer Confluence-Seite.
+
+Antworte IMMER als JSON:
+{
+  "has_contradiction": true/false,
+  "confidence": 0.0-1.0,
+  "contradictions": [
+    {
+      "type": "factual|temporal|status|technical",
+      "description": "Kurze Beschreibung des Widerspruchs auf Deutsch",
+      "recommendation": "Konkrete Empfehlung was aktualisiert werden muss"
     }
-  }
+  ]
 }
 
-// === Forge LLM (EAP — not available) ===
+Regeln:
+- Nur ECHTE Widersprüche melden (nicht bloß fehlende Info)
+- confidence 0.8+ = sicherer Widerspruch
+- confidence 0.5-0.8 = wahrscheinlicher Widerspruch
+- Immer Deutsch antworten
+- Max 3 Widersprüche pro Vergleich`;
 
-async function callForgeLLM(_prompt: string): Promise<LLMResponse> {
-  throw new Error('EAP not available');
+function buildUserPrompt(
+  jiraText: string,
+  confluenceText: string,
+  jiraKey: string,
+  pageTitle: string
+): string {
+  return `Jira-Ticket ${jiraKey}:
+${jiraText.substring(0, 2000)}
+
+Confluence-Seite "${pageTitle}":
+${confluenceText.substring(0, 2000)}
+
+Finde alle inhaltlichen Widersprüche zwischen dem Ticket und der Seite.`;
 }
 
-// === External Claude API ===
-
-async function callExternalClaude(prompt: string): Promise<LLMResponse> {
-  const apiKey = await getConfig('anthropic_api_key', '');
-  if (!apiKey) {
-    throw new Error('No Anthropic API key configured');
-  }
-
-  const response = await api.fetch('https://api.anthropic.com/v1/messages', {
+// === CLAUDE API ===
+async function callClaude(config: LLMConfig, userPrompt: string): Promise<string> {
+  const model = config.model || 'claude-haiku-4-5-20251001';
+  const resp = await api.fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': apiKey,
+      'x-api-key': config.apiKey,
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: prompt }],
+      model,
+      max_tokens: 500,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }],
     }),
   });
-
-  if (!response.ok) {
-    throw new Error(`Claude API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const text = data.content?.[0]?.text || '';
-
-  return {
-    content: text,
-    model: 'claude-sonnet-4',
-    source: 'external'
-  };
+  if (!resp.ok) throw new Error(`Claude API ${resp.status}`);
+  const data = await resp.json();
+  return data.content?.[0]?.text || '';
 }
 
-// === Contradiction Analysis ===
+// === GEMINI API ===
+async function callGemini(config: LLMConfig, userPrompt: string): Promise<string> {
+  const model = config.model || 'gemini-2.5-flash';
+  const resp = await api.fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ parts: [{ text: userPrompt }] }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 500,
+          responseMimeType: 'application/json',
+        },
+      }),
+    }
+  );
+  if (!resp.ok) throw new Error(`Gemini API ${resp.status}`);
+  const data = await resp.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
 
+// === OPENAI API ===
+async function callOpenAI(config: LLMConfig, userPrompt: string): Promise<string> {
+  const model = config.model || 'gpt-4o-mini';
+  const resp = await api.fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 500,
+      temperature: 0.1,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+    }),
+  });
+  if (!resp.ok) throw new Error(`OpenAI API ${resp.status}`);
+  const data = await resp.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+// === MAIN FUNCTION ===
 export async function analyzeContradiction(
   jiraText: string,
   confluenceText: string,
   jiraKey: string,
   pageTitle: string
 ): Promise<ContradictionResult> {
-  const prompt = buildContradictionPrompt(jiraText, confluenceText, jiraKey, pageTitle);
-  const response = await analyzWithLLM(prompt);
+  const config = await getLLMConfig();
+  if (!config) return { hasContradiction: false, confidence: 0, contradictions: [] };
+
+  const prompt = buildUserPrompt(jiraText, confluenceText, jiraKey, pageTitle);
+  let rawResponse = '';
 
   try {
-    const parsed = JSON.parse(response.content);
+    switch (config.provider) {
+      case 'claude':
+        rawResponse = await callClaude(config, prompt);
+        break;
+      case 'gemini':
+        rawResponse = await callGemini(config, prompt);
+        break;
+      case 'openai':
+        rawResponse = await callOpenAI(config, prompt);
+        break;
+      default:
+        rawResponse = await callGemini(config, prompt);
+        break;
+    }
+  } catch (err: any) {
+    console.error(`[LLM] ${config.provider} API call failed:`, err?.message);
+    return { hasContradiction: false, confidence: 0, contradictions: [] };
+  }
+
+  // Parse JSON response
+  try {
+    // Extract JSON from response (may be wrapped in markdown code blocks)
+    const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return { hasContradiction: false, confidence: 0, contradictions: [] };
+
+    const parsed = JSON.parse(jsonMatch[0]);
     return {
-      hasContradiction: parsed.hasContradiction ?? false,
-      confidence: parsed.confidence ?? 0.5,
-      contradictions: parsed.contradictions ?? [],
+      hasContradiction: parsed.has_contradiction === true,
+      confidence: Number(parsed.confidence) || 0,
+      contradictions: (parsed.contradictions || []).map((c: any) => ({
+        type: String(c.type || 'unknown'),
+        description: String(c.description || ''),
+        recommendation: String(c.recommendation || ''),
+      })),
     };
   } catch {
-    console.warn('[LLM] Could not parse contradiction response, falling back');
-    return {
-      hasContradiction: false,
-      confidence: 0,
-      contradictions: [],
-    };
+    console.warn('[LLM] Failed to parse response:', rawResponse.substring(0, 200));
+    return { hasContradiction: false, confidence: 0, contradictions: [] };
   }
-}
-
-// === Prompt Builder ===
-
-export function buildContradictionPrompt(
-  jiraText: string,
-  confluenceText: string,
-  jiraKey: string,
-  pageTitle: string
-): string {
-  return `You are a data quality analyst. Compare these two texts from the same project and identify any contradictions or inconsistencies.
-
-JIRA TICKET (${jiraKey}):
-${jiraText.substring(0, 2000)}
-
-CONFLUENCE PAGE ("${pageTitle}"):
-${confluenceText.substring(0, 2000)}
-
-Respond in JSON format:
-{
-  "hasContradiction": true/false,
-  "confidence": 0.0-1.0,
-  "contradictions": [
-    {
-      "type": "status_mismatch|requirement_conflict|date_discrepancy|technical_inconsistency",
-      "description": "Brief description of the contradiction",
-      "recommendation": "What should be done to resolve this"
-    }
-  ]
-}
-
-If no contradictions found, return: {"hasContradiction": false, "confidence": 1.0, "contradictions": []}`;
 }

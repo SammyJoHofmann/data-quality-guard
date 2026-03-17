@@ -20,7 +20,7 @@ async function isAIEnabled(): Promise<boolean> {
     const { getConfig } = await import('../db/queries');
     const aiEnabled = await getConfig('ai_enabled', 'false');
     if (aiEnabled !== 'true') return false;
-    const apiKey = await getConfig('anthropic_api_key', '');
+    const apiKey = await getConfig('ai_api_key', '');
     return !!apiKey && apiKey.length >= 10;
   } catch { return false; }
 }

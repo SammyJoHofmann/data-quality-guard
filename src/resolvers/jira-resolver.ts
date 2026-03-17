@@ -9,6 +9,7 @@ import Resolver from '@forge/resolver';
 import { getLatestProjectScore, getProjectFindings, getProjectScoreHistory, getAllProjectScores, getProjectContradictions, getConfig, setConfig } from '../db/queries';
 import { initializeDatabase } from '../db/schema';
 import { runProjectScan } from '../scanner/run-scan';
+import { invalidateLLMCache } from '../ai/llm-client';
 
 // Forge SQL returns Decimal values as special objects, not primitives.
 // We MUST convert everything to Number/String before sending to the frontend.
@@ -75,7 +76,7 @@ resolver.define('getProjectScore', async ({ payload, context }: any) => {
   try { contradictions = await getProjectContradictions(projectKey); } catch (err) { console.error('[Resolver] Contradictions query failed:', err); }
 
   const aiEnabled = await getConfig('ai_enabled', 'false');
-  const hasApiKey = (await getConfig('anthropic_api_key', '')).length > 0;
+  const hasApiKey = (await getConfig('ai_api_key', '')).length > 0;
 
   return {
     score: sanitizeScore(rawScore),
@@ -124,33 +125,48 @@ resolver.define('triggerScan', async ({ payload, context }: any) => {
 resolver.define('getSettings', async () => {
   await initializeDatabase();
   const aiEnabled = await getConfig('ai_enabled', 'false');
-  const hasApiKey = (await getConfig('anthropic_api_key', '')).length > 0;
-  const model = await getConfig('ai_model', 'claude-sonnet-4-20250514');
+  const rawKey = await getConfig('ai_api_key', '');
+  const hasKey = rawKey.length > 0;
+  const provider = await getConfig('ai_provider', 'gemini');
+  const maskedKey = hasKey ? '***' + rawKey.slice(-4) : '';
   return {
     aiEnabled: aiEnabled === 'true',
-    hasApiKey,
-    model: String(model),
+    hasKey,
+    apiKey: maskedKey,
+    provider: String(provider),
   };
 });
 
 resolver.define('saveSettings', async ({ payload }: any) => {
   await initializeDatabase();
+  const validProviders = ['claude', 'gemini', 'openai'];
   if (payload?.aiEnabled !== undefined) {
     await setConfig('ai_enabled', payload.aiEnabled ? 'true' : 'false');
   }
-  if (payload?.apiKey !== undefined && payload.apiKey.length > 0) {
-    await setConfig('anthropic_api_key', String(payload.apiKey));
+  if (payload?.apiKey !== undefined && payload.apiKey.length > 0 && !payload.apiKey.startsWith('***')) {
+    await setConfig('ai_api_key', String(payload.apiKey));
   }
-  if (payload?.model !== undefined) {
-    await setConfig('ai_model', String(payload.model));
+  if (payload?.provider !== undefined && validProviders.includes(payload.provider)) {
+    await setConfig('ai_provider', String(payload.provider));
   }
+  invalidateLLMCache();
   return { success: true };
 });
 
 resolver.define('deleteApiKey', async () => {
   await initializeDatabase();
-  await setConfig('anthropic_api_key', '');
+  await setConfig('ai_api_key', '');
   await setConfig('ai_enabled', 'false');
+  invalidateLLMCache();
+  return { success: true };
+});
+
+resolver.define('dismissFinding', async ({ payload }: any) => {
+  await initializeDatabase();
+  const findingId = payload?.findingId;
+  if (!findingId) return { error: 'No findingId' };
+  const { dismissFinding } = await import('../db/queries');
+  await dismissFinding(String(findingId));
   return { success: true };
 });
 
