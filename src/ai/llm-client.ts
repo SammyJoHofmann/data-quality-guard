@@ -115,7 +115,10 @@ async function callClaude(config: LLMConfig, userPrompt: string): Promise<string
       messages: [{ role: 'user', content: userPrompt }],
     }),
   });
-  if (!resp.ok) throw new Error(`Claude API ${resp.status}`);
+  if (!resp.ok) {
+    const errBody = await resp.text().catch(() => '');
+    throw new Error(`Claude API ${resp.status}: ${errBody.substring(0, 200)}`);
+  }
   const data = await resp.json();
   return data.content?.[0]?.text || '';
 }
@@ -139,7 +142,10 @@ async function callGemini(config: LLMConfig, userPrompt: string): Promise<string
       }),
     }
   );
-  if (!resp.ok) throw new Error(`Gemini API ${resp.status}`);
+  if (!resp.ok) {
+    const errBody = await resp.text().catch(() => '');
+    throw new Error(`Gemini API ${resp.status}: ${errBody.substring(0, 200)}`);
+  }
   const data = await resp.json();
   return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
@@ -164,7 +170,10 @@ async function callOpenAI(config: LLMConfig, userPrompt: string): Promise<string
       ],
     }),
   });
-  if (!resp.ok) throw new Error(`OpenAI API ${resp.status}`);
+  if (!resp.ok) {
+    const errBody = await resp.text().catch(() => '');
+    throw new Error(`OpenAI API ${resp.status}: ${errBody.substring(0, 200)}`);
+  }
   const data = await resp.json();
   return data.choices?.[0]?.message?.content || '';
 }

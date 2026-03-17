@@ -174,6 +174,11 @@ function Settings({ onClose }) {
           <label className="toggle"><input type="checkbox" checked={ai} onChange={() => setAi(!ai)} /><span className="toggle-track" /></label>
           <span className="toggle-label">{ai ? 'KI aktiv' : 'KI deaktiviert'}</span>
         </div>
+        {!ai && (
+          <div className="info-box info-box-blue" style={{ marginBottom: 16 }}>
+            <span>Ohne KI: Regelbasierte Analyse (fehlende Felder, Workflow-Anomalien). Mit KI: Zusätzlich semantische Widerspruchserkennung.</span>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? <><span className="spinner" /> Speichert</> : 'Speichern'}</button>
           {key && <button className="btn btn-danger" onClick={del} disabled={saving}>Key löschen</button>}
@@ -231,7 +236,15 @@ function Dashboard() {
   const [settings, setSettings] = useState(false);
   const [pg, setPg] = useState(0);
   const [sevFilter, setSevFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('severity');
+  const [sortDir, setSortDir] = useState('desc');
   const pp = 15;
+
+  const toggleSort = (col) => {
+    if (sortBy === col) setSortDir(sortDir === 'desc' ? 'asc' : 'desc');
+    else { setSortBy(col); setSortDir('desc'); }
+    setPg(0);
+  };
 
   useEffect(() => { load(); }, []);
   const load = async () => {
@@ -250,7 +263,13 @@ function Dashboard() {
   if (!data?.score) return (
     <div className="app">
       <div className="header"><span className="header-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 8, verticalAlign: 'text-bottom'}}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10" stroke="var(--c-green)"/></svg>Data Quality Guard</span><button className="btn btn-primary" onClick={scan} disabled={scanning}>{scanning ? <><span className="spinner" /> Scannt...</> : <><IconScan /> Ersten Scan starten</>}</button></div>
-      <div className="empty"><div className="empty-title">Noch keine Daten</div><div className="empty-desc">Starte den ersten Scan um die Qualität deines Projekts zu analysieren.</div></div>
+      <div className="empty">
+        <div style={{ fontSize: 40, marginBottom: 12 }}><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="1.5" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10" stroke="var(--c-green)"/></svg></div>
+        <div className="empty-title">Willkommen bei Data Quality Guard</div>
+        <div className="empty-desc">Die App scannt dein Jira-Projekt und Confluence-Seiten automatisch und findet:<br/>
+          Fehlende Beschreibungen, veraltete Tickets, Widersprüche zwischen Doku und Tickets,<br/>
+          verwaiste Aufgaben und Workflow-Probleme. Klicke auf "Ersten Scan starten".</div>
+      </div>
     </div>
   );
 
@@ -275,9 +294,17 @@ function Dashboard() {
     return counts;
   })();
 
+  const sevOrder = { critical: 0, high: 1, medium: 2, low: 3 };
   const filtered = sevFilter === 'all' ? findings : findings.filter(f => safe(f.severity) === sevFilter);
-  const totalPg = Math.ceil(filtered.length / pp);
-  const paged = filtered.slice(pg * pp, (pg + 1) * pp);
+  const sorted = [...filtered].sort((a, b) => {
+    let cmp = 0;
+    if (sortBy === 'severity') cmp = (sevOrder[a.severity] || 9) - (sevOrder[b.severity] || 9);
+    else if (sortBy === 'ticket') cmp = safe(a.item_key).localeCompare(safe(b.item_key));
+    else if (sortBy === 'problem') cmp = safe(a.message).localeCompare(safe(b.message));
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+  const totalPg = Math.ceil(sorted.length / pp);
+  const paged = sorted.slice(pg * pp, (pg + 1) * pp);
 
   return (
     <div className="app">
@@ -344,7 +371,7 @@ function Dashboard() {
             <div className="contra" key={i}>
               <div className="contra-head">
                 <span className="contra-badge">Widerspruch</span>
-                <span className="contra-keys">{safe(c.source_key)} ↔ {safe(c.target_key)}</span>
+                <span className="contra-keys">{safe(c.source_key)} ↔ {safe(c.page_title) || safe(c.target_key)}</span>
                 {safeNum(c.confidence) > 0 && <span className="contra-conf">{Math.round(safeNum(c.confidence) * 100)}%</span>}
               </div>
               <div className="contra-desc">{safe(c.description)}</div>
@@ -397,7 +424,13 @@ function Dashboard() {
             {sc.low > 0 && <button className={`sev sev-low ${sevFilter === 'low' ? 'sev-active' : ''}`} onClick={() => { setSevFilter('low'); setPg(0); }}>{sc.low} Niedrig</button>}
           </div>
           <table className="tbl">
-            <thead><tr><th style={{ width: 76 }}>Schwere</th><th style={{ width: 80 }}>Ticket</th><th>Problem</th><th style={{ width: 190 }}>Empfehlung</th><th style={{ width: 36 }}></th></tr></thead>
+            <thead><tr>
+              <th style={{ width: 76, cursor: 'pointer' }} onClick={() => toggleSort('severity')}>Schwere {sortBy === 'severity' ? (sortDir === 'desc' ? '↓' : '↑') : ''}</th>
+              <th style={{ width: 80, cursor: 'pointer' }} onClick={() => toggleSort('ticket')}>Ticket {sortBy === 'ticket' ? (sortDir === 'desc' ? '↓' : '↑') : ''}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('problem')}>Problem {sortBy === 'problem' ? (sortDir === 'desc' ? '↓' : '↑') : ''}</th>
+              <th style={{ width: 190 }}>Empfehlung</th>
+              <th style={{ width: 36 }}></th>
+            </tr></thead>
             <tbody>
               {paged.map((f, i) => (
                 <tr key={i}>
@@ -412,9 +445,11 @@ function Dashboard() {
                   <td className="tbl-msg">{safe(f.message) || safe(f.check_type)}</td>
                   <td className="tbl-rec">{recommend(f)}</td>
                   <td>
-                    <button className="btn-dismiss" onClick={async () => {
+                    <button className="btn-dismiss" onClick={async (e) => {
+                      const row = e.target.closest('tr');
+                      if (row) { row.style.opacity = '0.3'; row.style.transition = 'opacity 0.3s'; }
                       await invoke('dismissFinding', { findingId: safe(f.id) });
-                      load();
+                      setTimeout(() => load(), 400);
                     }} title="Als erledigt markieren">×</button>
                   </td>
                 </tr>
