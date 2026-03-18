@@ -125,8 +125,13 @@ function Settings({ onClose }) {
       setSaving(false);
       return;
     }
-    try { await invoke('saveSettings', { apiKey: key, provider, aiEnabled: ai }); await invoke('saveThresholds', thresholds); setMsg({ ok: true, t: 'Gespeichert' }); }
-    catch (e) { setMsg({ ok: false, t: safe(e?.message) }); }
+    try {
+      await invoke('saveSettings', { apiKey: key, provider, aiEnabled: ai });
+      await invoke('saveThresholds', thresholds);
+      setMsg({ ok: true, t: 'Einstellungen gespeichert! Du kannst jetzt zurück zum Dashboard und scannen.' });
+      // Scroll to top so user sees the confirmation
+      window.scrollTo(0, 0);
+    } catch (e) { setMsg({ ok: false, t: 'Fehler beim Speichern: ' + safe(e?.message) }); }
     setSaving(false);
   };
 
@@ -249,6 +254,7 @@ function Dashboard() {
   const [sevFilter, setSevFilter] = useState('all');
   const [sortBy, setSortBy] = useState('severity');
   const [sortDir, setSortDir] = useState('desc');
+  const [showContras, setShowContras] = useState(false);
   const pp = 15;
 
   const toggleSort = (col) => {
@@ -385,11 +391,14 @@ function Dashboard() {
         </div>
       )}
 
-      {/* Contradictions */}
+      {/* Contradictions — max 3, expandable */}
       {contras.length > 0 && (
         <div className="section">
-          <div className="section-head"><span className="section-title">Widersprüche</span><span className="section-count">{contras.length}</span></div>
-          {contras.map((c, i) => (
+          <div className="section-head">
+            <span className="section-title">Widersprüche</span>
+            <span className="section-count">{contras.length}</span>
+          </div>
+          {contras.slice(0, showContras ? contras.length : 3).map((c, i) => (
             <div className="contra" key={i}>
               <div className="contra-head">
                 <span className="contra-badge">Widerspruch</span>
@@ -401,6 +410,11 @@ function Dashboard() {
               {safe(c.recommendation) && <div className="contra-rec">{safe(c.recommendation)}</div>}
             </div>
           ))}
+          {contras.length > 3 && (
+            <button className="btn btn-secondary" onClick={() => setShowContras(!showContras)} style={{ width: '100%', marginTop: 8 }}>
+              {showContras ? 'Weniger anzeigen' : `Alle ${contras.length} Widersprüche anzeigen`}
+            </button>
+          )}
         </div>
       )}
 
@@ -459,7 +473,7 @@ function Dashboard() {
                   <td><span className={`sev ${sevCls(f.severity)}`}>{sevLabel(f.severity)}</span></td>
                   <td>
                     {safe(f.item_key).includes('-') ? (
-                      <a className="tbl-link" href="#" onClick={e => { e.preventDefault(); router.navigate(`/browse/${safe(f.item_key)}`); }}>{safe(f.item_key)}</a>
+                      <a className="tbl-link" href="#" onClick={e => { e.preventDefault(); router.open(`/browse/${safe(f.item_key)}`); }}>{safe(f.item_key)}</a>
                     ) : (
                       <span style={{ fontSize: 12, color: 'var(--c-accent-text)', fontWeight: 500 }}>
                         {(() => {
